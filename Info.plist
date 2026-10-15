@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>tr</string>
+	<key>CFBundleDisplayName</key>
+	<string>Hâl</string>
+	<key>CFBundleExecutable</key>
+	<string>Hal</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>dev.sungur.Hilal</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Hâl</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSSupportsAutomaticTermination</key>
+	<false/>
+	<key>NSSupportsSuddenTermination</key>
+	<false/>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Yaklaşan toplantılarını panoda göstermek için takvimin okunur. İzin yalnızca sen Ayarlar’dan istediğinde sorulur.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Yaklaşan toplantılarını panoda göstermek için takvimin okunur.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Namaz vakitlerini bulunduğun konuma göre göstermek için konumun kullanılır.</string>
+</dict>
+</plist>

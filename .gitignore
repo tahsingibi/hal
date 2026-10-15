@@ -1,0 +1,14 @@
+Hilal.app
+Hal.app
+AppIcon.iconset
+.DS_Store
+.build/
+
+# Kökteki geçici hizalama denemeleri
+qtalign
+qtclick
+qtfinal
+qtfix
+qtmed2
+qtsimple
+qtup2
