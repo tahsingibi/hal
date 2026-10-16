@@ -19,7 +19,14 @@ enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
 
         var id: String { rawValue }
 
-        var title: String { rawValue }
+        var title: String {
+            switch self {
+            case .app: return L("Uygulama", "App")
+            case .modules: return L("Modüller", "Modules")
+            case .tools: return L("Araçlar", "Tools")
+            case .info: return ""
+            }
+        }
 
         var tabs: [SettingsTab] {
             switch self {
@@ -33,18 +40,18 @@ enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
 
     var title: String {
         switch self {
-        case .general: return "Genel"
-        case .appearance: return "Görünüm"
-        case .notifications: return "Bildirimler"
-        case .focus: return "Odak"
-        case .quota: return "Kotalar"
-        case .worship: return "İbadet"
-        case .calendar: return "Takvim"
-        case .fitness: return "Sağlık"
-        case .money: return "Ödemeler"
-        case .downloader: return "İndirici"
-        case .ports: return "Portlar"
-        case .about: return "Hakkında"
+        case .general: return L("Genel", "General")
+        case .appearance: return L("Görünüm", "Appearance")
+        case .notifications: return L("Bildirimler", "Notifications")
+        case .focus: return L("Odak", "Focus")
+        case .quota: return L("Kotalar", "Quotas")
+        case .worship: return L("İbadet", "Prayer")
+        case .calendar: return L("Takvim", "Calendar")
+        case .fitness: return L("Sağlık", "Health")
+        case .money: return L("Ödemeler", "Payments")
+        case .downloader: return L("İndirici", "Downloader")
+        case .ports: return L("Portlar", "Ports")
+        case .about: return L("Hakkında", "About")
         }
     }
 
@@ -78,7 +85,6 @@ struct SettingsView: View {
     @State private var legacyKeychainCount = 0
     @State private var legacyNote: String?
     @State private var copiedDiagnostics = false
-    @State private var newDua = ""
     @State private var calendarAccess = CalendarService.shared.access
     @State private var claudeHint: String?
 
@@ -149,112 +155,80 @@ struct SettingsView: View {
 
     private var worshipTab: some View {
         Form {
-            Section("Takip") {
-                Toggle("Namaz takibi", isOn: $store.settings.trackPrayers)
-                Text("Vakit geçtikten sonra Namaz sekmesinden işaretlersin; pano gün içi sayıyı ve seriyi gösterir. Bilgisayara geçmediğin günleri Bugün > Gün Sonu sayfasından tamamlarısın.")
+            Section(L("İbadet", "Prayer")) {
+                Toggle(L("Namaz takibi", "Prayer tracking"), isOn: $store.settings.trackPrayers)
+                Text(L(
+                    "Vakit geçtikten sonra Namaz sekmesinden işaretlersin; pano gün içi sayıyı ve seriyi gösterir. Bilgisayara geçmediğin günleri Bugün > Gün Sonu sayfasından tamamlarısın.",
+                    "After a prayer time passes, mark it on the Prayer tab; the board shows today’s count and streak. Days you weren’t at the computer can be finished from Today > End of day."
+                ))
                     .font(.caption).foregroundStyle(.secondary)
 
-                Toggle("Kur’an takibi", isOn: $store.settings.trackQuran)
-                if store.settings.trackQuran {
-                    LabeledContent("Günlük hedef") {
-                        TextField("", value: $store.settings.quranGoalPages, format: plainNumber)
-                            .frame(width: 60).multilineTextAlignment(.trailing)
-                        Text("sayfa").foregroundStyle(.secondary)
+                Picker(L("Ülke", "Country"), selection: countryBinding) {
+                    Text(L("Seç", "Choose")).tag("")
+                    ForEach(store.countries) { country in
+                        Text(country.localizedName).tag(country.code)
                     }
                 }
-
-                Toggle("Günlük dua listesi", isOn: $store.settings.trackDua)
-                if store.settings.trackDua {
-                    ForEach(store.settings.duaList) { item in
-                        HStack {
-                            Text(item.name)
-                            Spacer()
-                            Button(role: .destructive) { store.removeDua(item.id) } label: {
-                                Image(systemName: "trash")
-                            }
-                            .buttonStyle(.borderless)
-                        }
-                    }
-                    HStack {
-                        TextField("Yeni kayıt (ör. Sabah zikri)", text: $newDua)
-                            .textFieldStyle(.roundedBorder)
-                            .onSubmit { addDua() }
-                        Button("Ekle", action: addDua)
-                            .disabled(newDua.trimmingCharacters(in: .whitespaces).isEmpty)
-                    }
-                    Text("Listeyi sen tanımlarsın; uygulama metin içermez, yalnızca “bugün okundu mu” bilgisini tutar.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            Section("Konum ve hesaplama") {
-            Picker("Ülke", selection: countryBinding) {
-                Text("Seç").tag("")
-                ForEach(store.countries) { country in
-                    Text(country.name).tag(country.code)
-                }
-            }
-            Picker("İl / Eyalet", selection: stateBinding) {
-                Text("Seç").tag("")
-                ForEach(store.regions) { region in
-                    Text(region.name).tag(region.name)
-                }
-            }
-            if !store.cities.isEmpty {
-                Picker("Şehir / İlçe", selection: cityBinding) {
-                    Text("Seç").tag("")
-                    ForEach(store.cities) { city in
-                        Text(city.name).tag(city.name)
+                Picker(L("İl / Eyalet", "State / Province"), selection: stateBinding) {
+                    Text(L("Seç", "Choose")).tag("")
+                    ForEach(store.regions) { region in
+                        Text(region.name).tag(region.name)
                     }
                 }
-            } else {
-                TextField("Şehir ara", text: $store.cityQuery)
-                    .onChange(of: store.cityQuery) { _, value in
-                        store.searchCities(value)
-                    }
-                if !store.cityResults.isEmpty {
-                    Picker("Sonuçlar", selection: cityBinding) {
-                        Text("Seç").tag("")
-                        ForEach(store.cityResults) { city in
+                if !store.cities.isEmpty {
+                    Picker(L("Şehir / İlçe", "City / District"), selection: cityBinding) {
+                        Text(L("Seç", "Choose")).tag("")
+                        ForEach(store.cities) { city in
                             Text(city.name).tag(city.name)
                         }
                     }
+                } else {
+                    TextField(L("Şehir ara", "Search city"), text: $store.cityQuery)
+                        .onChange(of: store.cityQuery) { _, value in
+                            store.searchCities(value)
+                        }
+                    if !store.cityResults.isEmpty {
+                        Picker(L("Sonuçlar", "Results"), selection: cityBinding) {
+                            Text(L("Seç", "Choose")).tag("")
+                            ForEach(store.cityResults) { city in
+                                Text(city.name).tag(city.name)
+                            }
+                        }
+                    }
                 }
-            }
-            Picker("Hesap yöntemi", selection: $store.settings.method) {
-                ForEach(CalculationMethods.all) { method in
-                    Text(method.name).tag(method.id)
+                Picker(L("Hesap yöntemi", "Calculation method"), selection: $store.settings.method) {
+                    ForEach(CalculationMethods.all) { method in
+                        Text(method.name).tag(method.id)
+                    }
                 }
-            }
-            Picker("Mezhep (İkindi)", selection: $store.settings.school) {
-                Text("Diyanet / Şafii").tag(0)
-                Text("Hanefi").tag(1)
-            }
-            Text("Türkiye’de Diyanet ikindi için erken (Şafii) hesabı kullanır. Hanefi yaklaşık 1 saat sonradır.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Toggle("Güneş doğuşunu göster", isOn: $store.settings.showSunrise)
-            LabeledContent("Koordinat") {
-                Text(store.settings.hasLocation
-                     ? String(format: "%.4f, %.4f", store.settings.latitude, store.settings.longitude)
-                     : "seçilmedi")
+                Picker(L("Mezhep (İkindi)", "School (Asr)"), selection: $store.settings.school) {
+                    Text(L("Diyanet / Şafii", "Diyanet / Shafi'i")).tag(0)
+                    Text(L("Hanefi", "Hanafi")).tag(1)
+                }
+                Text(L(
+                    "Türkiye’de Diyanet ikindi için erken (Şafii) hesabı kullanır. Hanefi yaklaşık 1 saat sonradır.",
+                    "In Turkey, Diyanet uses the earlier (Shafi'i) Asr calculation. Hanafi is about 1 hour later."
+                ))
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-            }
-            Button("Vakitleri yenile") {
-                Task { await store.refresh() }
-            }
+                Toggle(L("Güneş doğuşunu göster", "Show sunrise"), isOn: $store.settings.showSunrise)
+                LabeledContent(L("Koordinat", "Coordinates")) {
+                    Text(store.settings.hasLocation
+                         ? String(format: "%.4f, %.4f", locale: Language.locale, arguments: [store.settings.latitude, store.settings.longitude])
+                         : L("seçilmedi", "not chosen"))
+                        .foregroundStyle(.secondary)
+                }
+                Button(L("Vakitleri yenile", "Refresh times")) {
+                    Task { await store.refresh() }
+                }
             }
         }
         .formStyle(.grouped)
     }
 
-    private func addDua() {
-        store.addDua(newDua)
-        newDua = ""
-    }
-
     private var quotaTab: some View {
         Form {
-            Section("Yerleşik") {
+            Section(L("Yerleşik", "Built-in")) {
                 Toggle("Claude", isOn: Binding(
                     get: { store.settings.claudeEnabled },
                     set: { store.toggle(.claude, enabled: $0) }
@@ -268,14 +242,17 @@ struct SettingsView: View {
                     set: { store.toggle(.grok, enabled: $0) }
                 ))
                 HStack {
-                    Button("Claude’a tekrar giriş") {
+                    Button(L("Claude’a tekrar giriş", "Sign in to Claude again")) {
                         if let error = ClaudeAuth.openLogin() {
                             claudeHint = error
                         } else {
-                            claudeHint = "Terminal açıldı. Giriş bittikten sonra Kotaları yenile’ye bas."
+                            claudeHint = L(
+                                "Terminal açıldı. Giriş bittikten sonra Kotaları yenile’ye bas.",
+                                "Terminal opened. After you finish signing in, tap Refresh quotas."
+                            )
                         }
                     }
-                    Button("Kotaları yenile") {
+                    Button(L("Kotaları yenile", "Refresh quotas")) {
                         claudeHint = nil
                         Task { await store.refresh() }
                     }
@@ -283,39 +260,58 @@ struct SettingsView: View {
                 if let claudeHint {
                     Text(claudeHint)
                         .font(.caption)
-                        .foregroundStyle(claudeHint.contains("bulunamadı") ? .red : .secondary)
+                        .foregroundStyle(
+                            claudeHint.contains("bulunamadı") || claudeHint.localizedCaseInsensitiveContains("not found")
+                                ? .red : .secondary
+                        )
                 }
-                Text("Claude oturumu Keychain’den okunur. Süre dolduysa Terminal’de claude çalıştır, tarayıcıdan giriş yap, sonra Yenile.")
+                Text(L(
+                    "Claude oturumu Keychain’den okunur. Süre dolduysa Terminal’de claude çalıştır, tarayıcıdan giriş yap, sonra Yenile.",
+                    "The Claude session is read from Keychain. If it expired, run claude in Terminal, sign in in the browser, then Refresh."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if store.settings.grokEnabled {
                     HStack {
-                        Button("Terminalde grok login") {
+                        Button(L("Terminalde grok login", "grok login in Terminal")) {
                             if let error = GrokAuth.openLogin() {
                                 claudeHint = error
                             } else {
-                                claudeHint = "Terminal açıldı. Giriş bittikten sonra Yenile’ye bas."
+                                claudeHint = L(
+                                    "Terminal açıldı. Giriş bittikten sonra Yenile’ye bas.",
+                                    "Terminal opened. After you finish signing in, tap Refresh."
+                                )
                             }
                         }
-                        Button("Kotaları yenile") {
+                        Button(L("Kotaları yenile", "Refresh quotas")) {
                             claudeHint = nil
                             Task { await store.refresh() }
                         }
                     }
-                    Text("Haftalık sınır ve Grok Build, grok’un kendi fatura ucundan okunur. Oturum ~/.grok/auth.json dosyasıdır; süresi dolunca kendiliğinden yenilenir.")
+                    Text(L(
+                        "Haftalık sınır ve Grok Build, grok’un kendi fatura ucundan okunur. Oturum ~/.grok/auth.json dosyasıdır; süresi dolunca kendiliğinden yenilenir.",
+                        "Weekly limit and Grok Build are read from grok’s own billing endpoint. The session is ~/.grok/auth.json; it renews itself when it expires."
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Text("Claude, Claude Code oturumundan; Codex ~/.codex/auth.json dosyasından; Grok, grok login oturumundan okunur. Kota kapalı başlar; görmek için anahtarı sen açarsın.")
+                Text(L(
+                    "Claude, Claude Code oturumundan; Codex ~/.codex/auth.json dosyasından; Grok, grok login oturumundan okunur. Kota kapalı başlar; görmek için anahtarı sen açarsın.",
+                    "Claude is read from the Claude Code session; Codex from ~/.codex/auth.json; Grok from the grok login session. Quotas start off; you turn each one on to see it."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if !installedCLIs.isEmpty {
-                    Text("Bu makinede bulundu: \(installedCLIs.joined(separator: ", ")).")
+                    Text(Lf(
+                        "Bu makinede bulundu: %1$@.",
+                        "Found on this Mac: %1$@.",
+                        installedCLIs.joined(separator: ", ")
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
-            Section("Gelişmiş · Özel kota kaynakları") {
+            Section(L("Gelişmiş · Özel kota kaynakları", "Advanced · Custom quota sources")) {
                 ForEach(store.settings.customProviders) { provider in
                     HStack {
                         Circle().fill(Color(hex: provider.accentHex)).frame(width: 8, height: 8)
@@ -339,8 +335,8 @@ struct SettingsView: View {
                     }
                 }
                 if adding {
-                    TextField("Ad", text: $draft.name)
-                    Picker("Kaynak", selection: $draft.source) {
+                    TextField(L("Ad", "Name"), text: $draft.name)
+                    Picker(L("Kaynak", "Source"), selection: $draft.source) {
                         ForEach(CustomSourceKind.allCases) { kind in
                             Text(kind.title).tag(kind)
                         }
@@ -348,33 +344,33 @@ struct SettingsView: View {
                     switch draft.source {
                     case .manual:
                         HStack {
-                            TextField("Kullanılan", value: $draft.used, format: plainNumber)
-                            TextField("Limit", value: $draft.limit, format: plainNumber)
+                            TextField(L("Kullanılan", "Used"), value: $draft.used, format: plainNumber)
+                            TextField(L("Limit", "Limit"), value: $draft.limit, format: plainNumber)
                         }
                     case .command:
-                        TextField("Komut (JSON yazmalı)", text: $draft.command)
+                        TextField(L("Komut (JSON yazmalı)", "Command (must print JSON)"), text: $draft.command)
                     case .url:
                         TextField("https://…", text: $draft.url)
-                        SecureField("Bearer token (opsiyonel)", text: $draft.token)
+                        SecureField(L("Bearer token (opsiyonel)", "Bearer token (optional)"), text: $draft.token)
                     }
-                    ColorPicker("Renk", selection: Binding(
+                    ColorPicker(L("Renk", "Color"), selection: Binding(
                         get: { Color(hex: draft.accentHex) },
                         set: { draft.accentHex = $0.hexString }
                     ))
                     HStack {
-                        Button("Ekle") {
+                        Button(L("Ekle", "Add")) {
                             guard !draft.name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
                             store.addProvider(draft)
                             draft = CustomProvider(name: "")
                             adding = false
                         }
-                        Button("Vazgeç") {
+                        Button(L("Vazgeç", "Cancel")) {
                             adding = false
                             draft = CustomProvider(name: "")
                         }
                     }
                 } else {
-                    Button("Özel kaynak ekle") {
+                    Button(L("Özel kaynak ekle", "Add custom source")) {
                         draft = CustomProvider(name: "")
                         adding = true
                     }
@@ -386,30 +382,39 @@ struct SettingsView: View {
 
     private var calendarTab: some View {
         Form {
-            Section("Takvim") {
+            Section(L("Takvim", "Calendar")) {
                 switch calendarAccess {
                 case .granted:
-                    Label("Takvim bağlı", systemImage: "checkmark.circle")
+                    Label(L("Takvim bağlı", "Calendar connected"), systemImage: "checkmark.circle")
                         .foregroundStyle(.secondary)
-                    Text("Bugünün kalan olayları panoda ve Takvim sekmesinde görünür.")
+                    Text(L(
+                        "Bugünün kalan olayları panoda ve Takvim sekmesinde görünür.",
+                        "Today’s remaining events appear on the board and the Calendar tab."
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 case .notDetermined:
-                    Button("Takvime bağlan") {
+                    Button(L("Takvime bağlan", "Connect Calendar")) {
                         Task {
                             await CalendarService.shared.requestAccess()
                             calendarAccess = CalendarService.shared.access
                             await store.refresh()
                         }
                     }
-                    Text("İzin yalnızca bu düğmeye bastığında sorulur; uygulama kendiliğinden istemez.")
+                    Text(L(
+                        "İzin yalnızca bu düğmeye bastığında sorulur; uygulama kendiliğinden istemez.",
+                        "Permission is asked only when you tap this button; the app never asks on its own."
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 case .denied:
-                    Text("Takvim erişimi kapalı. Sistem Ayarları > Gizlilik ve Güvenlik > Takvimler içinden açabilirsin.")
+                    Text(L(
+                        "Takvim erişimi kapalı. Sistem Ayarları > Gizlilik ve Güvenlik > Takvimler içinden açabilirsin.",
+                        "Calendar access is off. You can enable it in System Settings > Privacy & Security > Calendars."
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Button("Gizlilik ayarlarını aç") {
+                    Button(L("Gizlilik ayarlarını aç", "Open Privacy settings")) {
                         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
                             NSWorkspace.shared.open(url)
                         }
@@ -422,32 +427,35 @@ struct SettingsView: View {
 
     private var fitnessTab: some View {
         Form {
-            Section("Haftalık program") {
-                Toggle("Antrenman takibi", isOn: $store.settings.trackWorkout)
+            Section(L("Haftalık program", "Weekly plan")) {
+                Toggle(L("Antrenman takibi", "Workout tracking"), isOn: $store.settings.trackWorkout)
                 ForEach(Array(Workout.dayNames.enumerated()), id: \.offset) { index, day in
                     LabeledContent(day) {
                         // Başlık parametresi LabeledContent içinde görünür etikete dönüşüyor;
                         // "Dinlenme" yer tutucu olarak `prompt` ile verilmeli.
-                        TextField("", text: planBinding(index), prompt: Text("Dinlenme"))
+                        TextField("", text: planBinding(index), prompt: Text(L("Dinlenme", "Rest")))
                             .labelsHidden()
                             .multilineTextAlignment(.trailing)
                     }
                 }
-                Button("Varsayılana dön") {
+                Button(L("Varsayılana dön", "Reset to default")) {
                     store.settings.workoutPlan = Workout.defaultPlan
                 }
-                Text("Boş bıraktığın ya da “Dinlenme” yazdığın günler antrenman sayılmaz; seriyi kırmaz.")
+                Text(L(
+                    "Boş bıraktığın ya da “Dinlenme” yazdığın günler antrenman sayılmaz; seriyi kırmaz.",
+                    "Days you leave blank or mark “Rest” don’t count as workouts and don’t break the streak."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Section("İlaç ve takviye") {
-                Toggle("İlaç ve takviye takibi", isOn: Binding(
+            Section(L("İlaç ve takviye", "Meds & supplements")) {
+                Toggle(L("İlaç ve takviye takibi", "Meds & supplements tracking"), isOn: Binding(
                     get: { store.settings.trackMedication },
                     set: { store.settings.trackMedication = $0
                            Task { await store.refreshMedicationNotifications() } }
                 ))
                 if store.settings.trackMedication {
-                    Toggle("Doz saatinde hatırlat", isOn: Binding(
+                    Toggle(L("Doz saatinde hatırlat", "Remind at dose time"), isOn: Binding(
                         get: { store.settings.notifyMedication },
                         set: { store.settings.notifyMedication = $0
                                Task { await store.refreshMedicationNotifications() } }
@@ -455,30 +463,33 @@ struct SettingsView: View {
                     ForEach(store.settings.medications) { item in
                         medicationRow(item)
                     }
-                    Button("İlaç veya takviye ekle") { store.addMedication() }
-                    Text("Her ilaç veya takviyeye birden çok saat verebilirsin; her saat ayrı bir doz olarak işaretlenir. Alınmış doz için hatırlatma gönderilmez. Bilgisayara geçmediğin günleri Bugün > Gün Sonu sayfasından tamamlarısın.")
+                    Button(L("İlaç veya takviye ekle", "Add med or supplement")) { store.addMedication() }
+                    Text(L(
+                        "Her ilaç veya takviyeye birden çok saat verebilirsin; her saat ayrı bir doz olarak işaretlenir. Alınmış doz için hatırlatma gönderilmez. Bilgisayara geçmediğin günleri Bugün > Gün Sonu sayfasından tamamlarısın.",
+                        "You can give each med or supplement several times; each time is marked as its own dose. No reminder is sent for a dose already taken. Days you weren’t at the computer can be finished from Today > End of day."
+                    ))
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
-            Section("Su ve protein") {
-                Toggle("Takip et", isOn: $store.settings.trackIntake)
+            Section(L("Su ve protein", "Water and protein")) {
+                Toggle(L("Takip et", "Track"), isOn: $store.settings.trackIntake)
                 if store.settings.trackIntake {
-                    LabeledContent("Su hedefi") {
+                    LabeledContent(L("Su hedefi", "Water goal")) {
                         TextField("", value: $store.settings.waterGoalML, format: plainNumber)
                             .frame(width: 70).multilineTextAlignment(.trailing)
                         Text("ml").foregroundStyle(.secondary)
                     }
-                    LabeledContent("Su hızlı giriş") {
+                    LabeledContent(L("Su hızlı giriş", "Water quick add")) {
                         TextField("", value: $store.settings.waterStepML, format: plainNumber)
                             .frame(width: 70).multilineTextAlignment(.trailing)
                         Text("ml").foregroundStyle(.secondary)
                     }
-                    LabeledContent("Protein hedefi") {
+                    LabeledContent(L("Protein hedefi", "Protein goal")) {
                         TextField("", value: $store.settings.proteinGoalG, format: plainNumber)
                             .frame(width: 70).multilineTextAlignment(.trailing)
                         Text("g").foregroundStyle(.secondary)
                     }
-                    LabeledContent("Protein hızlı giriş") {
+                    LabeledContent(L("Protein hızlı giriş", "Protein quick add")) {
                         TextField("", value: $store.settings.proteinStepG, format: plainNumber)
                             .frame(width: 70).multilineTextAlignment(.trailing)
                         Text("g").foregroundStyle(.secondary)
@@ -486,8 +497,8 @@ struct SettingsView: View {
                 }
             }
             if store.settings.trackIntake {
-                Section("Bugün") {
-                    LabeledContent("Su") {
+                Section(L("Bugün", "Today")) {
+                    LabeledContent(L("Su", "Water")) {
                         TextField("", value: intakeBinding(Metric.waterML), format: plainNumber)
                             .frame(width: 70).multilineTextAlignment(.trailing)
                         Text("ml").foregroundStyle(.secondary)
@@ -497,12 +508,18 @@ struct SettingsView: View {
                             .frame(width: 70).multilineTextAlignment(.trailing)
                         Text("g").foregroundStyle(.secondary)
                     }
-                    Text("Panodaki hızlı giriş düğmeleri yukarıdaki adımlarla artırır; günün toplamını buradan elle de düzeltebilirsin.")
+                    Text(L(
+                        "Panodaki hızlı giriş düğmeleri yukarıdaki adımlarla artırır; günün toplamını buradan elle de düzeltebilirsin.",
+                        "The board’s quick-add buttons increase by the steps above; you can also edit today’s total here by hand."
+                    ))
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
             Section {
-                Text("Set, tekrar ve ağırlık kaydı bilerek yok: menü çubuğu penceresi bunun için dar ve girişi her gün yapmak sürdürülemez. Burada tutulan soru şu — bugün ne var, yaptım mı, kaç gündür sürüyor.")
+                Text(L(
+                    "Set, tekrar ve ağırlık kaydı bilerek yok: menü çubuğu penceresi bunun için dar ve girişi her gün yapmak sürdürülemez. Burada tutulan soru şu — bugün ne var, yaptım mı, kaç gündür sürüyor.",
+                    "Sets, reps, and weight logging are intentionally missing: the menu bar window is too narrow for that, and entering it every day isn’t sustainable. The question kept here is — what’s on today, did I do it, how many days has it lasted."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -526,28 +543,28 @@ struct SettingsView: View {
     /// `LabeledContent` ile iki satır da Form'un aynı sütun geometrisini kullanır.
     private func medicationRow(_ item: Medication) -> some View {
         Group {
-            LabeledContent("İlaç / takviye") {
+            LabeledContent(L("İlaç / takviye", "Med / supplement")) {
                 HStack(spacing: 4) {
                     // Esnek genişlikli alan satırdan satıra farklı ölçülüp
                     // Form'un sütun hesabını kaydırıyordu; ikisi de sabit.
-                    TextField("", text: medBinding(item, \.name), prompt: Text("Ad"))
+                    TextField("", text: medBinding(item, \.name), prompt: Text(L("Ad", "Name")))
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 118)
-                    TextField("", text: medBinding(item, \.dose), prompt: Text("Doz"))
+                    TextField("", text: medBinding(item, \.dose), prompt: Text(L("Doz", "Dose")))
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 58)
                     Toggle("", isOn: medBinding(item, \.enabled))
                         .labelsHidden()
-                        .help("Bu ilacı geçici olarak kapat")
+                        .help(L("Bu ilacı geçici olarak kapat", "Temporarily turn off this med"))
                     Button(role: .destructive) { store.removeMedication(item.id) } label: {
                         Image(systemName: "trash")
                     }
                     .buttonStyle(.borderless)
-                    .help("Sil")
+                    .help(L("Sil", "Delete"))
                     Spacer(minLength: 0)
                 }
             }
-            LabeledContent("Saatler") {
+            LabeledContent(L("Saatler", "Times")) {
                 HStack(spacing: 4) {
                     ForEach(Array(item.times.indices), id: \.self) { index in
                         HStack(spacing: 0) {
@@ -566,7 +583,7 @@ struct SettingsView: View {
                                 } label: { Image(systemName: "minus.circle.fill") }
                                 .buttonStyle(.borderless)
                                 .foregroundStyle(.tertiary)
-                                .help("Bu doz saatini kaldır")
+                                .help(L("Bu doz saatini kaldır", "Remove this dose time"))
                             }
                         }
                     }
@@ -576,7 +593,7 @@ struct SettingsView: View {
                         store.updateMedication(copy)
                     } label: { Image(systemName: "plus.circle") }
                     .buttonStyle(.borderless)
-                    .help("Doz saati ekle")
+                    .help(L("Doz saati ekle", "Add dose time"))
                     Spacer(minLength: 0)
                 }
             }
@@ -585,7 +602,7 @@ struct SettingsView: View {
 
     /// Binlik ayracı olmayan sayı biçimi: hedef alanında "3.000" yerine "3000".
     private var plainNumber: FloatingPointFormatStyle<Double> {
-        .number.grouping(.never)
+        .number.locale(Language.locale).grouping(.never)
     }
 
     private func medBinding<Value>(_ item: Medication, _ path: WritableKeyPath<Medication, Value>) -> Binding<Value> {
@@ -635,59 +652,68 @@ struct SettingsView: View {
 
     private var downloaderTab: some View {
         Form {
-            Section("Video indir") {
+            Section(L("Video indir", "Download video")) {
                 DownloaderForm()
-                Text("Menü çubuğu ikonuna sağ tıklayıp Araçlar > Video indir ile de açılır.")
+                Text(L(
+                    "Menü çubuğu ikonuna sağ tıklayıp Araçlar > Video indir ile de açılır.",
+                    "You can also open it by right-clicking the menu bar icon and choosing Tools > Download video."
+                ))
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Section("Varsayılanlar") {
-                Picker("Biçim", selection: $store.settings.downloadFormat) {
+            Section(L("Varsayılanlar", "Defaults")) {
+                Picker(L("Biçim", "Format"), selection: $store.settings.downloadFormat) {
                     ForEach(DownloadService.Format.allCases) { format in
                         Text(format.title).tag(format)
                     }
                 }
-                LabeledContent("Klasör") {
+                LabeledContent(L("Klasör", "Folder")) {
                     HStack {
                         Text(store.settings.downloadDestination.path)
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .lineLimit(1).truncationMode(.head)
-                        Button("Değiştir") { chooseFolder() }
+                        Button(L("Değiştir", "Change")) { chooseFolder() }
                         if !store.settings.downloadFolder.isEmpty {
-                            Button("Masaüstü") { store.settings.downloadFolder = "" }
+                            Button(L("Masaüstü", "Desktop")) { store.settings.downloadFolder = "" }
                         }
                     }
                 }
-                Text("Klasör seçmezsen masaüstüne iner.")
+                Text(L(
+                    "Klasör seçmezsen masaüstüne iner.",
+                    "If you don’t choose a folder, downloads go to the Desktop."
+                ))
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Section("Güncelleme") {
-                Toggle("yt-dlp'yi kendi güncelle", isOn: $store.settings.downloaderAutoUpdate)
-                Text("Günde bir kez, ilk indirmeden önce sessizce günceller. Ayrıca indirme “Unable to extract” gibi bir çıkarıcı hatasıyla düşerse zorla güncelleyip bir kez daha dener — YouTube tarafı değiştiğinde takılıp kalmazsın.")
+            Section(L("Güncelleme", "Updates")) {
+                Toggle(L("yt-dlp'yi kendi güncelle", "Auto-update yt-dlp"), isOn: $store.settings.downloaderAutoUpdate)
+                Text(L(
+                    "Günde bir kez, ilk indirmeden önce sessizce günceller. Ayrıca indirme “Unable to extract” gibi bir çıkarıcı hatasıyla düşerse zorla güncelleyip bir kez daha dener — YouTube tarafı değiştiğinde takılıp kalmazsın.",
+                    "Once a day, it quietly updates before the first download. If a download fails with an extractor error like “Unable to extract”, it force-updates and retries once — so a YouTube change won’t leave you stuck."
+                ))
                     .font(.caption).foregroundStyle(.secondary)
                 if let tools = Optional(DownloadService.tools()), let path = tools.ytdlp {
-                    LabeledContent("Yöntem") {
+                    LabeledContent(L("Yöntem", "Method")) {
                         Text(DownloadService.updateStrategy(for: path).describe)
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
                 }
-                Button("Şimdi güncelle") {
+                Button(L("Şimdi güncelle", "Update now")) {
                     Task { await DownloadService.shared.updateTool() }
                 }
                 if let note = DownloadService.shared.lastUpdateNote {
                     Text(note).font(.caption).foregroundStyle(.tertiary)
                 }
             }
-            Section("Araçlar") {
+            Section(L("Araçlar", "Tools")) {
                 let tools = DownloadService.tools()
                 LabeledContent("yt-dlp") {
-                    Text(tools.ytdlp ?? "bulunamadı")
+                    Text(tools.ytdlp ?? L("bulunamadı", "not found"))
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(tools.ytdlp == nil ? .red : .secondary)
                 }
                 LabeledContent("ffmpeg") {
-                    Text(tools.ffmpeg ?? "bulunamadı")
+                    Text(tools.ffmpeg ?? L("bulunamadı", "not found"))
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(tools.ffmpeg == nil ? .red : .secondary)
                 }
@@ -696,7 +722,10 @@ struct SettingsView: View {
                         .font(.system(size: 11, design: .monospaced))
                         .textSelection(.enabled)
                 }
-                Text("Uygulama kendi başına bir şey kurmaz; araçların kurulumu sana ait.")
+                Text(L(
+                    "Uygulama kendi başına bir şey kurmaz; araçların kurulumu sana ait.",
+                    "The app never installs anything on its own; installing the tools is up to you."
+                ))
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -709,7 +738,7 @@ struct SettingsView: View {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.directoryURL = store.settings.downloadDestination
-        panel.prompt = "Seç"
+        panel.prompt = L("Seç", "Choose")
         if panel.runModal() == .OK, let url = panel.url {
             store.settings.downloadFolder = url.path
         }
@@ -717,40 +746,51 @@ struct SettingsView: View {
 
     private var moneyTab: some View {
         Form {
-            Section("Düzenli ödemeler") {
+            Section(L("Düzenli ödemeler", "Recurring payments")) {
                 if store.settings.subscriptions.isEmpty {
-                    Text("Abonelik, fatura, taksit — bir kez gir, yenileme tarihi kendiliğinden ilerler.")
+                    Text(L(
+                        "Abonelik, fatura, taksit — bir kez gir, yenileme tarihi kendiliğinden ilerler.",
+                        "Subscription, bill, installment — enter once and the renewal date advances on its own."
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 ForEach(store.settings.subscriptions) { item in
                     subscriptionRow(item)
                 }
-                Button("Ödeme ekle") {
-                    store.addSubscription(Subscription(name: "Yeni", amount: 0, anchor: Date()))
+                Button(L("Ödeme ekle", "Add payment")) {
+                    store.addSubscription(Subscription(name: L("Yeni", "New"), amount: 0, anchor: Date()))
                 }
             }
-            Section("Hatırlatma") {
-                Picker("Yenilemeden önce", selection: Binding(
+            Section(L("Hatırlatma", "Reminder")) {
+                Picker(L("Yenilemeden önce", "Before renewal"), selection: Binding(
                     get: { store.settings.notifyRenewalDays },
                     set: { store.settings.notifyRenewalDays = $0
                            Task { await store.refreshRenewalNotifications() } }
                 )) {
-                    Text("Kapalı").tag(0)
-                    ForEach([1, 3, 7], id: \.self) { Text("\($0) gün önce").tag($0) }
+                    Text(L("Kapalı", "Off")).tag(0)
+                    ForEach([1, 3, 7], id: \.self) {
+                        Text(Lf("%1$d gün önce", "%1$d days before", $0)).tag($0)
+                    }
                 }
-                Text("Bildirim, yenileme gününden geriye sayarak sabah 09:00’da düşer.")
+                Text(L(
+                    "Bildirim, yenileme gününden geriye sayarak sabah 09:00’da düşer.",
+                    "The notification fires at 09:00 on the morning counted back from the renewal day."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             if !store.monthlyTotals.isEmpty {
-                Section("Aylık toplam") {
+                Section(L("Aylık toplam", "Monthly total")) {
                     ForEach(store.monthlyTotals, id: \.currency) { total in
                         LabeledContent(total.currency) {
-                            Text("\(Subscription.symbol(for: total.currency))\(String(format: "%.2f", total.amount))")
+                            Text("\(Subscription.symbol(for: total.currency))\(String(format: "%.2f", locale: Language.locale, arguments: [total.amount]))")
                         }
                     }
-                    Text("Yıllık ödemeler 12’ye bölünerek eklenir.")
+                    Text(L(
+                        "Yıllık ödemeler 12’ye bölünerek eklenir.",
+                        "Yearly payments are divided by 12 and added in."
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -762,7 +802,7 @@ struct SettingsView: View {
     private func subscriptionRow(_ item: Subscription) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                TextField("Ad", text: binding(item, \.name))
+                TextField(L("Ad", "Name"), text: binding(item, \.name))
                 Toggle("", isOn: binding(item, \.enabled)).labelsHidden()
                 Button(role: .destructive) {
                     store.removeSubscription(item.id)
@@ -770,7 +810,7 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
             }
             HStack {
-                TextField("Tutar", value: binding(item, \.amount), format: plainNumber)
+                TextField(L("Tutar", "Amount"), value: binding(item, \.amount), format: plainNumber)
                     .frame(width: 80)
                 Picker("", selection: binding(item, \.currency)) {
                     ForEach(Subscription.currencies, id: \.self) { Text($0).tag($0) }
@@ -783,7 +823,12 @@ struct SettingsView: View {
                 DatePicker("", selection: binding(item, \.anchor), displayedComponents: .date)
                     .labelsHidden()
             }
-            Text("Sıradaki yenileme: \(TimeFormatters.longDate(item.nextRenewal(after: Date()))) · \(item.daysUntilRenewal()) gün")
+            Text(Lf(
+                "Sıradaki yenileme: %1$@ · %2$d gün",
+                "Next renewal: %1$@ · %2$d days",
+                TimeFormatters.longDate(item.nextRenewal(after: Date())),
+                item.daysUntilRenewal()
+            ))
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
@@ -803,7 +848,7 @@ struct SettingsView: View {
 
     private var menuBarTab: some View {
         Form {
-            Section("Modüller") {
+            Section(L("Modüller", "Modules")) {
                 ForEach(ModuleKind.dashboardCases) { module in
                     Toggle(module.title, isOn: Binding(
                         get: { store.settings.isModuleEnabled(module) },
@@ -811,13 +856,19 @@ struct SettingsView: View {
                     ))
                     .disabled(!module.canDisable)
                 }
-                Text("Bugün panosu uygulamanın merkezi olduğu için açık kalır. Diğer modüller kapanınca veri kaynakları ve bildirimleri de durur.")
+                Text(L(
+                    "Bugün panosu uygulamanın merkezi olduğu için açık kalır. Diğer modüller kapanınca veri kaynakları ve bildirimleri de durur.",
+                    "The Today board stays on because it’s the center of the app. When other modules turn off, their data sources and notifications stop too."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Section("Bugün panosunda göster") {
+            Section(L("Bugün panosunda göster", "Show on Today board")) {
                 if store.summaryCatalog.isEmpty {
-                    Text("Pano satırları göründükçe burada listelenir.")
+                    Text(L(
+                        "Pano satırları göründükçe burada listelenir.",
+                        "Board rows are listed here as they appear."
+                    ))
                         .font(.caption).foregroundStyle(.secondary)
                 } else {
                     ForEach(store.summaryCatalog) { line in
@@ -825,16 +876,19 @@ struct SettingsView: View {
                             get: { store.isSummaryLineVisible(line.id) },
                             set: { store.setSummaryLine(line.id, visible: $0) }
                         )) {
-                            Text(line.title)
+                            Text(SummaryCatalogCopy.title(id: line.id, fallback: line.title))
                             Text(line.module.title)
                         }
                     }
                 }
-                Text("Modülü kapatmadan yalnızca panodaki satırını kaldırır: sekmesi, ölçümü ve bildirimleri yerinde kalır. Gizlenen satır akşam gün özetinde de görünmez. Bir kez görülen satır, o an üretilmese bile listede kalır.")
+                Text(L(
+                    "Modülü kapatmadan yalnızca panodaki satırını kaldırır: sekmesi, ölçümü ve bildirimleri yerinde kalır. Gizlenen satır akşam gün özetinde de görünmez. Bir kez görülen satır, o an üretilmese bile listede kalır.",
+                    "Hides only the board row without turning the module off: its tab, metrics, and notifications stay. A hidden row also stays out of the evening daily summary. Once a row has been seen, it remains in the list even when it isn’t produced right then."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Section("Topbar’da göster") {
+            Section(L("Topbar’da göster", "Show in menu bar")) {
                 if store.settings.claudeEnabled {
                     visibilityToggle("Claude", id: "claude")
                 }
@@ -847,28 +901,40 @@ struct SettingsView: View {
                 ForEach(store.settings.customProviders.filter(\.enabled)) { provider in
                     visibilityToggle(provider.name, id: provider.id.uuidString)
                 }
-                visibilityToggle("Namaz vakitleri", id: "prayer")
-                Text("İlk açılışta yalnızca Hâl ikonu durur. Claude, Codex, Grok ve namaz extra’sını buradan tek tek aç. Kapalı olanlar detay kutusunda kalır.")
+                visibilityToggle(L("Namaz vakitleri", "Prayer times"), id: "prayer")
+                Text(L(
+                    "İlk açılışta yalnızca Hâl ikonu durur. Claude, Codex, Grok ve namaz extra’sını buradan tek tek aç. Kapalı olanlar detay kutusunda kalır.",
+                    "On first launch only the Hâl icon is shown. Turn on Claude, Codex, Grok, and the prayer extra one by one here. Hidden ones stay in the detail box."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Section("Tıklama") {
-                Picker("İkona tıklayınca aç", selection: $store.settings.menuBarClickOpens) {
+            Section(L("Tıklama", "Click")) {
+                Picker(L("İkona tıklayınca aç", "Open on icon click"), selection: $store.settings.menuBarClickOpens) {
                     ForEach(MenuBarClickTarget.allCases) { Text($0.title).tag($0) }
                 }
-                Text("Özet ikon ve hiçbir modül görünmezken duran genel ikon her koşulda panoyu açar; ikisi de tek bir şeyi değil genel durumu temsil eder.")
+                Text(L(
+                    "Özet ikon ve hiçbir modül görünmezken duran genel ikon her koşulda panoyu açar; ikisi de tek bir şeyi değil genel durumu temsil eder.",
+                    "The summary icon and the general icon shown when no modules are visible always open the board; both represent overall status, not a single item."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Section("Yerleşim") {
-                Toggle("Kotaları tek ikonda topla", isOn: $store.settings.menuBarCollapsed)
-                Text("Açıkken kota ikonları tek bir ikona iner ve yalnızca en dolu kota görünür (ör. Grok %100). Tıklayınca o kotanın detayı açılır, diğerleri sekmelerde durur. Namaz saati ayrı ikon olarak kalır.")
+            Section(L("Yerleşim", "Layout")) {
+                Toggle(L("Kotaları tek ikonda topla", "Collapse quotas into one icon"), isOn: $store.settings.menuBarCollapsed)
+                Text(L(
+                    "Açıkken kota ikonları tek bir ikona iner ve yalnızca en dolu kota görünür (ör. Grok %100). Tıklayınca o kotanın detayı açılır, diğerleri sekmelerde durur. Namaz saati ayrı ikon olarak kalır.",
+                    "When on, quota icons collapse into one and only the fullest quota is shown (e.g. Grok 100%). Clicking opens that quota’s detail; the others stay in the tabs. Prayer time remains its own icon."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Section("Ekranlar") {
-                Toggle("Diğer ekranların menü çubuğunda da göster", isOn: $store.settings.mirrorToOtherDisplays)
-                Text("macOS çoğu ekranda extra’ları zaten kopyalar. Açarsan ikinci satır oluşabilir; kapalı tut.")
+            Section(L("Ekranlar", "Displays")) {
+                Toggle(L("Diğer ekranların menü çubuğunda da göster", "Also show on other displays’ menu bars"), isOn: $store.settings.mirrorToOtherDisplays)
+                Text(L(
+                    "macOS çoğu ekranda extra’ları zaten kopyalar. Açarsan ikinci satır oluşabilir; kapalı tut.",
+                    "macOS already mirrors extras on most displays. Turning this on can create a second row; leave it off."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -898,66 +964,84 @@ struct SettingsView: View {
 
     private var notificationsTab: some View {
         Form {
-            Section("Namaz") {
-                Toggle("Vakit bildirimi", isOn: notifyBinding(\.notifyPrayer))
+            Section(L("Namaz", "Prayer")) {
+                Toggle(L("Vakit bildirimi", "Prayer-time notification"), isOn: notifyBinding(\.notifyPrayer))
                 if store.settings.notifyPrayer {
-                    Picker("Ne zaman", selection: notifyBinding(\.notifyPrayerMinutes)) {
-                        Text("Vakit girince").tag(0)
-                        Text("5 dakika önce").tag(5)
-                        Text("10 dakika önce").tag(10)
-                        Text("15 dakika önce").tag(15)
-                        Text("30 dakika önce").tag(30)
+                    Picker(L("Ne zaman", "When"), selection: notifyBinding(\.notifyPrayerMinutes)) {
+                        Text(L("Vakit girince", "When time begins")).tag(0)
+                        Text(L("5 dakika önce", "5 minutes before")).tag(5)
+                        Text(L("10 dakika önce", "10 minutes before")).tag(10)
+                        Text(L("15 dakika önce", "15 minutes before")).tag(15)
+                        Text(L("30 dakika önce", "30 minutes before")).tag(30)
                     }
                 }
-                Text("Güneş vakti yalnızca Genel’de “Güneş’i göster” açıkken bildirilir.")
+                Text(L(
+                    "Güneş vakti yalnızca Genel’de “Güneş’i göster” açıkken bildirilir.",
+                    "Sunrise is notified only when “Show sunrise” is on in General."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Section("Kotalar") {
-                Toggle("Kota sıfırlanınca haber ver", isOn: notifyBinding(\.notifyQuotaReset))
-                Text("Limit dolduğunda elle kontrol etmek yerine, yeniden kullanılabilir olunca bildirir.")
+            Section(L("Kotalar", "Quotas")) {
+                Toggle(L("Kota sıfırlanınca haber ver", "Notify when a quota resets"), isOn: notifyBinding(\.notifyQuotaReset))
+                Text(L(
+                    "Limit dolduğunda elle kontrol etmek yerine, yeniden kullanılabilir olunca bildirir.",
+                    "Instead of checking by hand when a limit is full, it notifies you when it’s usable again."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Toggle("Eşik aşılınca uyar", isOn: notifyBinding(\.notifyQuotaThreshold))
+                Toggle(L("Eşik aşılınca uyar", "Warn when a threshold is crossed"), isOn: notifyBinding(\.notifyQuotaThreshold))
                 if store.settings.notifyQuotaThreshold {
-                    Picker("Eşik", selection: notifyBinding(\.notifyQuotaThresholdPercent)) {
+                    Picker(L("Eşik", "Threshold"), selection: notifyBinding(\.notifyQuotaThresholdPercent)) {
                         ForEach([50, 60, 70, 80, 90], id: \.self) { value in
                             Text("%\(value)").tag(value)
                         }
                     }
                 }
-                Text("Her olay bir kez bildirilir; aynı pencere için tekrarlamaz.")
+                Text(L(
+                    "Her olay bir kez bildirilir; aynı pencere için tekrarlamaz.",
+                    "Each event is notified once; it doesn’t repeat for the same window."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Section("Gün özeti") {
-                Toggle("Akşam gün özeti gönder", isOn: notifyBinding(\.notifyDailySummary))
+            Section(L("Gün özeti", "Daily summary")) {
+                Toggle(L("Akşam gün özeti gönder", "Send evening daily summary"), isOn: notifyBinding(\.notifyDailySummary))
                 if store.settings.notifyDailySummary {
-                    Picker("Saat", selection: notifyBinding(\.dailySummaryHour)) {
+                    Picker(L("Saat", "Time"), selection: notifyBinding(\.dailySummaryHour)) {
                         ForEach(Array(17...23), id: \.self) { hour in
-                            Text(String(format: "%02d:00", hour)).tag(hour)
+                            Text(String(format: "%02d:00", locale: Language.locale, arguments: [hour])).tag(hour)
                         }
                     }
                 }
-                Text("Günün sonunda derin çalışma, namaz ve hedeflerin özetini bildirir.")
+                Text(L(
+                    "Günün sonunda derin çalışma, namaz ve hedeflerin özetini bildirir.",
+                    "At the end of the day it notifies a summary of deep work, prayer, and your goals."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Section("Gün sonu") {
-                Toggle("Gün sonu hatırlatması", isOn: notifyBinding(\.notifyDayClose))
+            Section(L("Gün sonu", "End of day")) {
+                Toggle(L("Gün sonu hatırlatması", "End-of-day reminder"), isOn: notifyBinding(\.notifyDayClose))
                 if store.settings.notifyDayClose {
-                    Picker("Saat", selection: notifyBinding(\.dayCloseHour)) {
+                    Picker(L("Saat", "Time"), selection: notifyBinding(\.dayCloseHour)) {
                         ForEach(0..<24, id: \.self) { hour in
-                            Text(String(format: "%02d:00", hour)).tag(hour)
+                            Text(String(format: "%02d:00", locale: Language.locale, arguments: [hour])).tag(hour)
                         }
                     }
                 }
-                Text("Seçtiğin saatte bildirim gelir. Tıklayınca Gün Sonu sayfası açılır; kaçırdığın namaz, ilaç ve antrenman işaretlerini oradan düzeltirsin.")
+                Text(L(
+                    "Seçtiğin saatte bildirim gelir. Tıklayınca Gün Sonu sayfası açılır; kaçırdığın namaz, ilaç ve antrenman işaretlerini oradan düzeltirsin.",
+                    "A notification arrives at the time you choose. Tapping it opens the End of day page, where you can fix missed prayer, med, and workout marks."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Section {
-                Text("İzin, ilk bildirimi açtığında istenir. Sistem Ayarları > Bildirimler > Hâl üzerinden değiştirebilirsin.")
+                Text(L(
+                    "İzin, ilk bildirimi açtığında istenir. Sistem Ayarları > Bildirimler > Hâl üzerinden değiştirebilirsin.",
+                    "Permission is requested when you turn on the first notification. You can change it in System Settings > Notifications > Hâl."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -978,71 +1062,106 @@ struct SettingsView: View {
 
     private var generalTab: some View {
         Form {
-            Section("Pano") {
-                TextField("Adın", text: $store.settings.displayName, prompt: Text("Panodaki selamlamada kullanılır"))
-                LabeledContent("Günlük kayıt") {
+            Section {
+                Picker(L("Dil", "Language"), selection: $store.settings.language) {
+                    ForEach(LanguageChoice.allCases) { choice in
+                        Text(choice.title).tag(choice)
+                    }
+                }
+                Text(L(
+                    "Başlangıçta Mac’in dili kullanılır. Buradan Türkçe veya English seçebilirsin.",
+                    "Starts in your Mac’s language. Choose Türkçe or English here."
+                ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            Section(L("Pano", "Board")) {
+                TextField(L("Adın", "Your name"), text: $store.settings.displayName, prompt: Text(L("Panodaki selamlamada kullanılır", "Used in the board greeting")))
+                LabeledContent(L("Günlük kayıt", "Daily log")) {
                     Text(DailyLog.fileURL.path)
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.tertiary)
                         .textSelection(.enabled)
                 }
             }
-            Section("Temizlik modu") {
-                Toggle("Temizlik modu", isOn: Binding(
+            Section(L("Temizlik modu", "Cleaning mode")) {
+                Toggle(L("Temizlik modu", "Cleaning mode"), isOn: Binding(
                     get: { store.cleaningMode },
                     set: { store.setCleaningMode($0) }
                 ))
-                TextField("Başlık", text: $store.settings.cleaningTitle, prompt: Text(AppSettings.defaultCleaningTitle))
+                TextField(L("Başlık", "Title"), text: $store.settings.cleaningTitle, prompt: Text(AppSettings.defaultCleaningTitle))
                 TextField(
-                    "Metin",
+                    L("Metin", "Text"),
                     text: $store.settings.cleaningHint,
                     prompt: Text(AppSettings.defaultCleaningHint.replacingOccurrences(of: "\n", with: " ")),
                     axis: .vertical
                 )
                 .lineLimit(2...5)
-                Text("Ekran karartılır; dahili klavye ve trackpad tıklamaları yenilir. Harici mouse çalışır. Boş bırakılan başlık ve metin varsayılana döner.")
+                Text(L(
+                    "Ekran karartılır; dahili klavye ve trackpad tıklamaları yenilir. Harici mouse çalışır. Boş bırakılan başlık ve metin varsayılana döner.",
+                    "The screen dims; built-in keyboard and trackpad clicks are blocked. An external mouse still works. Blank title and text fall back to the defaults."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if !DeviceModes.shared.accessibilityTrusted {
-                    Text("Ekran kalkanı izin olmadan da çalışır. Sistem kısayollarının (Cmd-Tab gibi) da kilitlenmesi için Hâl’e Erişilebilirlik ve Giriş İzleme izni gerekir.")
+                    Text(L(
+                        "Ekran kalkanı izin olmadan da çalışır. Sistem kısayollarının (Cmd-Tab gibi) da kilitlenmesi için Hâl’e Erişilebilirlik ve Giriş İzleme izni gerekir.",
+                        "The screen shield works without permission. Locking system shortcuts (like Cmd-Tab) as well needs Accessibility and Input Monitoring permission for Hâl."
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Button("Klavye kilidi izni iste") {
+                    Button(L("Klavye kilidi izni iste", "Request keyboard lock permission")) {
                         DeviceModes.shared.requestKeyboardLockPermission()
                     }
-                    Button("Erişilebilirlik ayarını aç") {
+                    Button(L("Erişilebilirlik ayarını aç", "Open Accessibility settings")) {
                         DeviceModes.shared.openAccessibilitySettings()
                     }
-                    Button("Giriş İzleme ayarını aç") {
+                    Button(L("Giriş İzleme ayarını aç", "Open Input Monitoring settings")) {
                         DeviceModes.shared.openInputMonitoringSettings()
                     }
                 }
             }
             if legacyKeychainCount > 0 {
-                Section("Eski anahtar zinciri kayıtları") {
-                    Text("Gizli değerler artık anahtar zincirinde değil, yalnızca senin okuyabildiğin bir dosyada tutuluyor (\(SecretStore.fileURL.path)). Anahtar zincirinde \(legacyKeychainCount) eski kayıt duruyor; uygulama bunlara dokunmuyor, yani şifre sorusu çıkmıyor.")
+                Section(L("Eski anahtar zinciri kayıtları", "Legacy Keychain records")) {
+                    Text(Lf(
+                        "Gizli değerler artık anahtar zincirinde değil, yalnızca senin okuyabildiğin bir dosyada tutuluyor (%1$@). Anahtar zincirinde %2$d eski kayıt duruyor; uygulama bunlara dokunmuyor, yani şifre sorusu çıkmıyor.",
+                        "Secrets are no longer in Keychain; they’re kept only in a file only you can read (%1$@). Keychain still has %2$d legacy records; the app leaves them alone, so no password prompt appears.",
+                        SecretStore.fileURL.path,
+                        legacyKeychainCount
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if let legacyNote {
                         Text(legacyNote).font(.caption).foregroundStyle(.secondary)
                     }
-                    Button("Değerleri taşı ve kayıtları sil") {
+                    Button(L("Değerleri taşı ve kayıtları sil", "Move values and delete records")) {
                         let result = SecretStore.importLegacyKeychainItems()
                         legacyKeychainCount = SecretStore.legacyItemCount()
                         legacyNote = result.failed > 0
-                            ? "\(result.moved) değer taşındı, \(result.failed) kayıt okunamadı."
-                            : "\(result.moved) değer taşındı."
+                            ? Lf(
+                                "%1$d değer taşındı, %2$d kayıt okunamadı.",
+                                "%1$d values moved, %2$d records could not be read.",
+                                result.moved,
+                                result.failed
+                            )
+                            : Lf("%1$d değer taşındı.", "%1$d values moved.", result.moved)
                         Task { await store.refresh() }
                     }
-                    Text("Bir defalığına kayıt başına şifre sorar; sonrasında kayıtlar silinir ve bir daha sorulmaz.")
+                    Text(L(
+                        "Bir defalığına kayıt başına şifre sorar; sonrasında kayıtlar silinir ve bir daha sorulmaz.",
+                        "It asks for a password once per record; afterward the records are deleted and it won’t ask again."
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Button("Okumadan sil", role: .destructive) {
+                    Button(L("Okumadan sil", "Delete without reading"), role: .destructive) {
                         let removed = SecretStore.discardLegacyKeychainItems()
                         legacyKeychainCount = SecretStore.legacyItemCount()
-                        legacyNote = "\(removed) kayıt silindi."
+                        legacyNote = Lf("%1$d kayıt silindi.", "%1$d records deleted.", removed)
                     }
-                    Text("Silinen kayıtlar geri gelmez. Grok kotası ~/.grok/auth.json oturumundan okunur.")
+                    Text(L(
+                        "Silinen kayıtlar geri gelmez. Grok kotası ~/.grok/auth.json oturumundan okunur.",
+                        "Deleted records can’t be restored. The Grok quota is read from the ~/.grok/auth.json session."
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -1051,17 +1170,20 @@ struct SettingsView: View {
                 get: { store.settings.alwaysWake },
                 set: { store.setAlwaysWake($0) }
             ))
-            Text("Açıkken Mac idle uyku ve ekran uykusuna geçmez. Kapak kapanırsa sistem yine uyuyabilir.")
+            Text(L(
+                "Açıkken Mac idle uyku ve ekran uykusuna geçmez. Kapak kapanırsa sistem yine uyuyabilir.",
+                "When on, the Mac won’t enter idle sleep or display sleep. Closing the lid can still put the system to sleep."
+            ))
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Toggle("Açılışta başlat", isOn: Binding(
+            Toggle(L("Açılışta başlat", "Launch at login"), isOn: Binding(
                 get: { store.settings.launchAtLogin },
                 set: { value in
                     store.settings.launchAtLogin = value
                     store.applyLaunchAtLogin()
                 }
             ))
-            Button("Kotaları yenile") {
+            Button(L("Kotaları yenile", "Refresh quotas")) {
                 Task { await store.refresh() }
             }
             if let error = store.lastError {
@@ -1073,31 +1195,40 @@ struct SettingsView: View {
 
     private var focusTab: some View {
         Form {
-            Section("Derin çalışma") {
-                Toggle("Otomatik ölç", isOn: Binding(
+            Section(L("Derin çalışma", "Deep work")) {
+                Toggle(L("Otomatik ölç", "Measure automatically"), isOn: Binding(
                     get: { store.settings.focusTracking },
                     set: { store.settings.focusTracking = $0; store.applyFocusTracking() }
                 ))
-                LabeledContent("Günlük hedef") {
-                    TextField("", value: $store.settings.focusGoalMinutes, format: .number.grouping(.never))
+                LabeledContent(L("Günlük hedef", "Daily goal")) {
+                    TextField("", value: $store.settings.focusGoalMinutes, format: .number.locale(Language.locale).grouping(.never))
                         .frame(width: 64)
                         .multilineTextAlignment(.trailing)
-                    Text("dk").foregroundStyle(.secondary)
+                    Text(L("dk", "min")).foregroundStyle(.secondary)
                 }
-                Text("Öndeki uygulama listedeyse ve Mac iki dakikadır boşta değilse süre kendiliğinden sayılır.")
+                Text(L(
+                    "Öndeki uygulama listedeyse ve Mac iki dakikadır boşta değilse süre kendiliğinden sayılır.",
+                    "Time counts on its own when the frontmost app is on the list and the Mac hasn’t been idle for two minutes."
+                ))
                     .font(.caption).foregroundStyle(.secondary)
             }
             if store.settings.focusTracking {
-                Section("Çalışma uygulamaları") {
-                    TextField("Uygulamalar", text: focusAppsBinding, axis: .vertical)
+                Section(L("Çalışma uygulamaları", "Work apps")) {
+                    TextField(L("Uygulamalar", "Apps"), text: focusAppsBinding, axis: .vertical)
                         .lineLimit(3...6)
                         .font(.system(size: 11, design: .monospaced))
-                    Text("Virgülle ayır. Uygulama adı veya bundle kimliği bu parçalardan birini içerirse odak sayılır.")
+                    Text(L(
+                        "Virgülle ayır. Uygulama adı veya bundle kimliği bu parçalardan birini içerirse odak sayılır.",
+                        "Separate with commas. Focus counts if the app name or bundle id contains any of these parts."
+                    ))
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
             Section {
-                Text("Sayaç ve yedi günlük geçmiş yerel daily.json dosyasında tutulur; pomodoro ve görev yönetimi bilerek yok.")
+                Text(L(
+                    "Sayaç ve yedi günlük geçmiş yerel daily.json dosyasında tutulur; pomodoro ve görev yönetimi bilerek yok.",
+                    "The counter and seven-day history live in the local daily.json file; pomodoro and task management are intentionally absent."
+                ))
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -1124,13 +1255,21 @@ struct SettingsView: View {
                 .padding(.bottom, 2)
             Text("Hâl")
                 .font(.system(size: 24, weight: .semibold))
-            Text("Kişisel durum panosu")
+            Text(L("Kişisel durum panosu", "Personal status board"))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Text(Self.versionText)
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.tertiary)
                 .textSelection(.enabled)
+            Button(L("Güncellemeleri denetle", "Check for updates")) { UpdateController.check() }
+                .controlSize(.small)
+            Text(L(
+                "Yeni sürüm olunca sorar. Kendiliğinden kurmaz.",
+                "It asks when a new version is available. It never installs on its own."
+            ))
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
         }
     }
 
@@ -1154,14 +1293,14 @@ struct SettingsView: View {
     private var sourcesBlock: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Veri kaynakları")
+                Text(L("Veri kaynakları", "Data sources"))
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
                 if store.refreshing {
                     ProgressView().controlSize(.small).scaleEffect(0.7)
                 } else {
-                    Button("Yenile") { Task { await store.refresh() } }
+                    Button(L("Yenile", "Refresh")) { Task { await store.refresh() } }
                         .buttonStyle(.plain)
                         .font(.system(size: 11))
                         .foregroundStyle(.tint)
@@ -1211,7 +1350,7 @@ struct SettingsView: View {
                 }
             } label: {
                 Label(
-                    copiedDiagnostics ? "Kopyalandı" : "Tanılamayı kopyala",
+                    copiedDiagnostics ? L("Kopyalandı", "Copied") : L("Tanılamayı kopyala", "Copy diagnostics"),
                     systemImage: copiedDiagnostics ? "checkmark" : "doc.on.doc"
                 )
             }
@@ -1253,14 +1392,14 @@ struct SettingsView: View {
             rows.append(
                 SourceRow(
                     id: "prayer",
-                    name: "Namaz",
+                    name: L("Namaz", "Prayer"),
                     origin: located
                         ? "aladhan.com · \(store.settings.locationLabel)"
-                        : "konum seçilmedi",
+                        : L("konum seçilmedi", "location not chosen"),
                     value: !located
-                        ? "konum seç"
+                        ? L("konum seç", "choose location")
                         : (store.nextPrayer.map { "\($0.name) \(TimeFormatters.clock($0.time))" }
-                            ?? (ready ? "—" : "yükleniyor")),
+                            ?? (ready ? "—" : L("yükleniyor", "loading"))),
                     tint: located && ready ? .green : .orange
                 )
             )
@@ -1273,17 +1412,17 @@ struct SettingsView: View {
         case .claude: return "api.anthropic.com"
         case .codex: return "chatgpt.com"
         case .grok: return "grok login"
-        case .custom: return "özel kaynak"
+        case .custom: return L("özel kaynak", "custom source")
         }
     }
 
     private static func statusValue(_ group: QuotaGroup) -> String {
         switch group.status {
         case .ready:
-            return group.menuBarOverride ?? group.headlineWindow.map { "\($0.percentText) · \($0.title)" } ?? "hazır"
-        case .loading: return "yükleniyor"
-        case .missingAuth: return "oturum yok"
-        case .error: return "okunamadı"
+            return group.menuBarOverride ?? group.headlineWindow.map { "\($0.percentText) · \($0.title)" } ?? L("hazır", "ready")
+        case .loading: return L("yükleniyor", "loading")
+        case .missingAuth: return L("oturum yok", "no session")
+        case .error: return L("okunamadı", "unreadable")
         }
     }
 
@@ -1300,7 +1439,7 @@ struct SettingsView: View {
         let info = Bundle.main.infoDictionary
         let short = info?["CFBundleShortVersionString"] as? String ?? "?"
         let build = info?["CFBundleVersion"] as? String ?? "?"
-        return "sürüm \(short) (\(build))"
+        return Lf("sürüm %1$@ (%2$@)", "version %1$@ (%2$@)", short, build)
     }
 
     private static var systemText: String {
@@ -1318,7 +1457,7 @@ struct SettingsView: View {
         var lines = [
             "Hâl \(Self.versionText)",
             Self.systemText,
-            "Modüller: \(store.modules.map(\.title).joined(separator: ", "))"
+            Lf("Modüller: %1$@", "Modules: %1$@", store.modules.map(\.title).joined(separator: ", "))
         ]
         lines.append("")
         for row in sourceRows {
@@ -1330,12 +1469,12 @@ struct SettingsView: View {
         }
         if !problems.isEmpty {
             lines.append("")
-            lines.append("Sorunlar:")
+            lines.append(L("Sorunlar:", "Problems:"))
             lines.append(contentsOf: problems)
         }
         if let error = store.lastError {
             lines.append("")
-            lines.append("Son hata: \(error)")
+            lines.append(Lf("Son hata: %1$@", "Last error: %1$@", error))
         }
         return lines.joined(separator: "\n")
     }

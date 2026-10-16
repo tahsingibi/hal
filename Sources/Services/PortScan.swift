@@ -20,7 +20,7 @@ enum PortScan {
         var subtitle: String {
             var parts = ["PID \(pid)", address]
             if connections > 0 {
-                parts.append("\(connections) bağlantı")
+                parts.append(Lf("%1$d bağlantı", "%1$d connections", connections))
             }
             if let hint, !hint.isEmpty {
                 parts.append(hint)
@@ -80,7 +80,7 @@ enum PortScan {
 
         var rows: [Listener] = []
         for group in groups {
-            let command = group.command.isEmpty ? "süreç" : group.command
+            let command = group.command.isEmpty ? L("süreç", "process") : group.command
             var byPort: [Int: [String]] = [:]
             var order: [Int] = []
             for socket in group.sockets {

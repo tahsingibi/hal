@@ -8,18 +8,32 @@ import Foundation
 /// Buradaki soru şu: bugün ne var, yaptım mı, kaç gündür sürüyor.
 enum Workout {
     /// Program haftanın günlerine göre; 0 = Pazartesi.
-    static let dayNames = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"]
-    static let shortNames = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"]
+    static var dayNames: [String] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Language.locale
+        let symbols = calendar.weekdaySymbols
+        return (0..<7).map { symbols[($0 + 1) % 7] }
+    }
 
-    static let defaultPlan = [
-        "Göğüs + Triceps",
-        "Sırt + Biceps",
-        "Dinlenme",
-        "Bacak",
-        "Omuz + Karın",
-        "Kardiyo",
-        "Dinlenme"
-    ]
+    static var shortNames: [String] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Language.locale
+        let symbols = calendar.shortWeekdaySymbols
+        return (0..<7).map { symbols[($0 + 1) % 7] }
+    }
+
+    /// Yeni kurulumda o anki dile göre dolar. Kaydedilmiş program dil değişince yeniden yazılmaz.
+    static var defaultPlan: [String] {
+        [
+            L("Göğüs + Triceps", "Chest + triceps"),
+            L("Sırt + Biceps", "Back + biceps"),
+            L("Dinlenme", "Rest"),
+            L("Bacak", "Legs"),
+            L("Omuz + Karın", "Shoulders + core"),
+            L("Kardiyo", "Cardio"),
+            L("Dinlenme", "Rest")
+        ]
+    }
 
     /// Pazartesi = 0 olacak biçimde gün indeksi.
     static func index(for date: Date, calendar: Calendar = .current) -> Int {

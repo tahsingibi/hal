@@ -29,13 +29,13 @@ enum ModuleKind: String, CaseIterable, Codable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .today: return "Bugün"
-        case .focus: return "Odak"
-        case .usage: return "Kotalar"
-        case .prayer: return "İbadet"
-        case .calendar: return "Takvim"
-        case .fitness: return "Sağlık"
-        case .money: return "Ödemeler"
+        case .today: return L("Bugün", "Today")
+        case .focus: return L("Odak", "Focus")
+        case .usage: return L("Kotalar", "Quotas")
+        case .prayer: return L("İbadet", "Prayer")
+        case .calendar: return L("Takvim", "Calendar")
+        case .fitness: return L("Sağlık", "Health")
+        case .money: return L("Ödemeler", "Payments")
         }
     }
 

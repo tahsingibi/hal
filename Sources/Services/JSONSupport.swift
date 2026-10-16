@@ -141,14 +141,14 @@ enum NetworkClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 20
-        request.setValue("Hilal/1.0 (macOS)", forHTTPHeaderField: "User-Agent")
+        request.setValue("Hal/1.0 (macOS)", forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         for (key, value) in headers {
             request.setValue(value, forHTTPHeaderField: key)
         }
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
-            throw HilalError.message("Geçersiz yanıt")
+            throw HalError.message(L("Geçersiz yanıt", "Invalid response"))
         }
         return (data, http)
     }
@@ -159,14 +159,14 @@ enum NetworkClient {
         request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("Hilal/1.0 (macOS)", forHTTPHeaderField: "User-Agent")
+        request.setValue("Hal/1.0 (macOS)", forHTTPHeaderField: "User-Agent")
         for (key, value) in headers {
             request.setValue(value, forHTTPHeaderField: key)
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: json)
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
-            throw HilalError.message("Geçersiz yanıt")
+            throw HalError.message(L("Geçersiz yanıt", "Invalid response"))
         }
         return (data, http)
     }
@@ -176,7 +176,7 @@ enum NetworkClient {
         request.httpMethod = "POST"
         request.timeoutInterval = 20
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.setValue("Hilal/1.0 (macOS)", forHTTPHeaderField: "User-Agent")
+        request.setValue("Hal/1.0 (macOS)", forHTTPHeaderField: "User-Agent")
         for (key, value) in headers {
             request.setValue(value, forHTTPHeaderField: key)
         }
@@ -186,7 +186,7 @@ enum NetworkClient {
             .data(using: .utf8)
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
-            throw HilalError.message("Geçersiz yanıt")
+            throw HalError.message(L("Geçersiz yanıt", "Invalid response"))
         }
         return (data, http)
     }
@@ -204,7 +204,7 @@ enum NetworkClient {
         request.httpShouldHandleCookies = false
         let ua = browser
             ? "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
-            : "Hilal/1.0 (macOS)"
+            : "Hal/1.0 (macOS)"
         request.setValue(ua, forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if json != nil {
@@ -223,7 +223,7 @@ enum NetworkClient {
         }
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
-            throw HilalError.message("Geçersiz yanıt")
+            throw HalError.message(L("Geçersiz yanıt", "Invalid response"))
         }
         return (data, http)
     }
@@ -253,7 +253,7 @@ enum NetworkClient {
         }
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
-            throw HilalError.message("Geçersiz yanıt")
+            throw HalError.message(L("Geçersiz yanıt", "Invalid response"))
         }
         return (data, http)
     }
@@ -328,7 +328,7 @@ enum ProcessRunner {
             if process.isRunning { kill(process.processIdentifier, SIGKILL) }
             stdout.fileHandleForReading.readabilityHandler = nil
             stderr.fileHandleForReading.readabilityHandler = nil
-            throw HilalError.message("Komut zaman aşımına uğradı")
+            throw HalError.message(L("Komut zaman aşımına uğradı", "Command timed out"))
         }
         // Süreç bitti; kalan veriyi al.
         Thread.sleep(forTimeInterval: 0.02)

@@ -53,9 +53,9 @@ enum GrokCredits {
     }
 
     private static func limitTitle(_ periodType: String) -> String {
-        if periodType.contains("MONTHLY") { return "Aylık Sınır" }
-        if periodType.contains("WEEKLY") { return "Haftalık Sınır" }
-        return "Kullanım"
+        if periodType.contains("MONTHLY") { return L("Aylık Sınır", "Monthly limit") }
+        if periodType.contains("WEEKLY") { return L("Haftalık Sınır", "Weekly limit") }
+        return L("Kullanım", "Usage")
     }
 
     private static func productTitle(_ raw: String) -> String {
@@ -64,7 +64,7 @@ enum GrokCredits {
         case "grok": return "Grok"
         case "imagine": return "Imagine"
         case "api", "grokapi", "grok_api": return "API"
-        case "": return "Kullanım"
+        case "": return L("Kullanım", "Usage")
         default:
             var spaced = ""
             for character in raw {

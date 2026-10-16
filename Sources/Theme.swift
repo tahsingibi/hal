@@ -65,13 +65,15 @@ extension NSScreen {
 }
 
 enum TimeFormatters {
-    private static let clockFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "tr_TR")
-        f.dateFormat = "HH:mm"
-        return f
-    }()
+    private static let lock = NSLock()
+    private static var cached: AppLanguage?
+    private static let clockFormatter = DateFormatter()
+    private static let resetFormatter = DateFormatter()
+    private static let longDateFormatter = DateFormatter()
+    private static let weekdayFormatter = DateFormatter()
+    private static let weekdayShortFormatter = DateFormatter()
 
+    /// Dosya ve ağ anahtarları için sabit. Ekran dili bunu değiştirmez.
     private static let headerFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
@@ -79,15 +81,32 @@ enum TimeFormatters {
         return f
     }()
 
-    private static let resetFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "E h:mm a"
-        return f
-    }()
+    private static func prepareLocked(language: AppLanguage, locale: Locale) {
+        guard cached != language else { return }
+        cached = language
+        clockFormatter.locale = locale
+        clockFormatter.dateFormat = "HH:mm"
+        resetFormatter.locale = locale
+        resetFormatter.setLocalizedDateFormatFromTemplate("Ejm")
+        longDateFormatter.locale = locale
+        longDateFormatter.dateFormat = "d MMMM EEEE"
+        weekdayFormatter.locale = locale
+        weekdayFormatter.dateFormat = "EEEEE"
+        weekdayShortFormatter.locale = locale
+        weekdayShortFormatter.dateFormat = "EEE"
+    }
+
+    private static func withFormatters<T>(_ body: () -> T) -> T {
+        let language = Language.resolved
+        let locale = Language.locale
+        lock.lock()
+        defer { lock.unlock() }
+        prepareLocked(language: language, locale: locale)
+        return body()
+    }
 
     static func clock(_ date: Date) -> String {
-        clockFormatter.string(from: date)
+        withFormatters { clockFormatter.string(from: date) }
     }
 
     static func header(_ date: Date) -> String {
@@ -99,73 +118,58 @@ enum TimeFormatters {
         let hours = total / 3600
         let minutes = (total % 3600) / 60
         if hours >= 24 {
-            return "\(hours / 24)g \(hours % 24)s"
+            let days = hours / 24
+            let rest = hours % 24
+            return Language.isEnglish ? "\(days)d \(rest)h" : "\(days)g \(rest)s"
         }
         if hours > 0 {
-            return "\(hours)s \(minutes)dk"
+            return Language.isEnglish ? "\(hours)h \(minutes)m" : "\(hours)s \(minutes)dk"
         }
-        return "\(max(minutes, 1)) min"
+        let shown = max(minutes, 1)
+        return Language.isEnglish ? "\(shown)m" : "\(shown)dk"
     }
-
-    private static let longDateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "tr_TR")
-        f.dateFormat = "d MMMM EEEE"
-        return f
-    }()
-
-    private static let weekdayFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "tr_TR")
-        f.dateFormat = "EEEEE"
-        return f
-    }()
 
     static func weekdayInitial(_ date: Date) -> String {
-        weekdayFormatter.string(from: date)
+        withFormatters { weekdayFormatter.string(from: date) }
     }
 
-    private static let weekdayShortFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "tr_TR")
-        f.dateFormat = "EEE"
-        return f
-    }()
-
     static func weekdayShort(_ date: Date) -> String {
-        weekdayShortFormatter.string(from: date)
+        withFormatters { weekdayShortFormatter.string(from: date) }
     }
 
     /// Bugün / Dün / kısa gün adı. Gün sonu tarih seçiminde kullanılır.
     static func relativeDay(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
-        if calendar.isDate(date, inSameDayAs: now) { return "Bugün" }
+        if calendar.isDate(date, inSameDayAs: now) { return L("Bugün", "Today") }
         if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
            calendar.isDate(date, inSameDayAs: yesterday) {
-            return "Dün"
+            return L("Dün", "Yesterday")
         }
         return weekdayShort(date)
     }
 
     static func longDate(_ date: Date) -> String {
-        longDateFormatter.string(from: date)
+        withFormatters { longDateFormatter.string(from: date) }
     }
 
-    /// "3s 42dk" / "42dk" / "12dk" biçiminde süre.
+    /// Türkçe "3s 42dk", İngilizce "3h 42m".
     static func duration(_ seconds: TimeInterval) -> String {
         let total = max(0, Int(seconds))
         let hours = total / 3600
         let minutes = (total % 3600) / 60
-        if hours > 0 { return "\(hours)s \(minutes)dk" }
-        return "\(minutes)dk"
+        if hours > 0 {
+            return Language.isEnglish ? "\(hours)h \(minutes)m" : "\(hours)s \(minutes)dk"
+        }
+        return Language.isEnglish ? "\(minutes)m" : "\(minutes)dk"
     }
 
     static func resetPhrase(_ date: Date?) -> String {
         guard let date else { return "" }
         let interval = date.timeIntervalSinceNow
-        if interval <= 0 { return "Reset" }
+        if interval <= 0 { return L("Sıfırlandı", "Reset") }
         if interval < 6 * 3600 {
-            return "Resets in \(remaining(interval))"
+            return Lf("%1$@ içinde sıfırlanır", "Resets in %1$@", remaining(interval))
         }
-        return "Resets \(resetFormatter.string(from: date))"
+        let stamp = withFormatters { resetFormatter.string(from: date) }
+        return Lf("%1$@ sıfırlanır", "Resets %1$@", stamp)
     }
 }

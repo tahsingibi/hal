@@ -10,8 +10,8 @@ struct Subscription: Identifiable, Codable, Equatable, Hashable, Sendable {
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .monthly: return "Aylık"
-            case .yearly: return "Yıllık"
+            case .monthly: return L("Aylık", "Monthly")
+            case .yearly: return L("Yıllık", "Yearly")
             }
         }
         var component: Calendar.Component {
@@ -80,7 +80,7 @@ struct Subscription: Identifiable, Codable, Equatable, Hashable, Sendable {
         let symbol = Self.symbol(for: currency)
         let value = amount == amount.rounded()
             ? String(Int(amount))
-            : String(format: "%.2f", amount)
+            : String(format: "%.2f", locale: Language.locale, amount)
         return "\(symbol)\(value)"
     }
 

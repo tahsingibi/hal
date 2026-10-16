@@ -38,6 +38,12 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         syncReplicas()
     }
 
+    private func applyWindowTitles() {
+        settingsWindow?.title = L("Hâl Ayarları", "Hâl Settings")
+        downloaderWindow?.title = L("Hâl · Video indir", "Hâl · Download video")
+        portsWindow?.title = L("Hâl · Açık portlar", "Hâl · Open ports")
+    }
+
     func openSettings(tab: SettingsTab = .location) {
         if let settingsWindow {
             // Farklı bir sekme istendiyse içeriği yenile; aynıysa var olanı öne al.
@@ -54,7 +60,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         settingsTab = tab
         let controller = NSHostingController(rootView: SettingsView(initialTab: tab).environmentObject(store))
         let window = NSWindow(contentViewController: controller)
-        window.title = "Hâl Ayarları"
+        window.title = L("Hâl Ayarları", "Hâl Settings")
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.setContentSize(NSSize(width: 740, height: 700))
         window.center()
@@ -72,7 +78,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         }
         let controller = NSHostingController(rootView: DownloaderUtilityView().environmentObject(store))
         let window = NSWindow(contentViewController: controller)
-        window.title = "Hâl · Video indir"
+        window.title = L("Hâl · Video indir", "Hâl · Download video")
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.setContentSize(NSSize(width: 440, height: 320))
         window.center()
@@ -91,7 +97,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         }
         let controller = NSHostingController(rootView: PortsUtilityView().environmentObject(store))
         let window = NSWindow(contentViewController: controller)
-        window.title = "Hâl · Açık portlar"
+        window.title = L("Hâl · Açık portlar", "Hâl · Open ports")
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.setContentSize(NSSize(width: 480, height: 520))
         window.minSize = NSSize(width: 440, height: 420)
@@ -130,10 +136,11 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
             .store(in: &cancellables)
 
         store.$settings
-            .map { "\($0.menuBarVisible.joined())-\($0.disabledModules.joined())-\($0.mirrorToOtherDisplays)-\($0.menuBarCollapsed)-\($0.claudeEnabled)-\($0.codexEnabled)-\($0.grokEnabled)-\($0.customProviders.count)-\($0.countryCode)-\($0.city)" }
+            .map { "\($0.language.rawValue)-\($0.menuBarVisible.joined())-\($0.disabledModules.joined())-\($0.mirrorToOtherDisplays)-\($0.menuBarCollapsed)-\($0.claudeEnabled)-\($0.codexEnabled)-\($0.grokEnabled)-\($0.customProviders.count)-\($0.countryCode)-\($0.city)" }
             .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
+                self?.applyWindowTitles()
                 self?.rebuildExtras()
                 self?.syncReplicas()
             }
@@ -161,7 +168,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         }
 
         NotificationCenter.default.addObserver(
-            forName: .hilalOpenSettings,
+            forName: .halOpenSettings,
             object: nil,
             queue: .main
         ) { [weak self] _ in
@@ -169,7 +176,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         }
 
         NotificationCenter.default.addObserver(
-            forName: .hilalOpenTarget,
+            forName: .halOpenTarget,
             object: nil,
             queue: .main
         ) { [weak self] note in
@@ -211,7 +218,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
 
     private func makeExtra(id: String) -> Extra {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.autosaveName = "dev.sungur.Hilal.\(id)"
+        item.autosaveName = "dev.sungur.Hal.\(id)"
         if let button = item.button {
             button.imagePosition = .imageLeading
             button.font = NSFont.menuBarFont(ofSize: 0)
@@ -258,13 +265,13 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         }
         if id == "prayer" {
             if !store.settings.hasLocation {
-                return ("", "Konum seç · Ayarlar › İbadet")
+                return ("", L("Konum seç · Ayarlar › İbadet", "Choose a location · Settings › Prayer"))
             }
             if let next = store.nextPrayer {
                 let clock = TimeFormatters.clock(next.time)
-                return (clock, "\(next.name) \(clock)")
+                return (clock, "\(next.localizedName) \(clock)")
             }
-            return ("--:--", "Namaz")
+            return ("--:--", L("Namaz", "Prayer"))
         }
         if let group = store.quotas.first(where: { $0.id == id }) {
             return (group.menuBarTitle, group.tooltip)
@@ -395,25 +402,25 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
 
     private func showStatusMenu(from extra: Extra) {
         let menu = NSMenu()
-        menu.addItem(withTitle: "Yenile", action: #selector(refreshClicked), keyEquivalent: "r")
-        menu.addItem(withTitle: "Ayarlar…", action: #selector(settingsClicked), keyEquivalent: ",")
+        menu.addItem(withTitle: L("Yenile", "Refresh"), action: #selector(refreshClicked), keyEquivalent: "r")
+        menu.addItem(withTitle: L("Ayarlar…", "Settings…"), action: #selector(settingsClicked), keyEquivalent: ",")
         menu.addItem(.separator())
-        let tools = NSMenuItem(title: "Araçlar", action: nil, keyEquivalent: "")
+        let tools = NSMenuItem(title: L("Araçlar", "Tools"), action: nil, keyEquivalent: "")
         let toolsMenu = NSMenu()
-        toolsMenu.addItem(withTitle: "Video indir…", action: #selector(downloaderClicked), keyEquivalent: "")
-        toolsMenu.addItem(withTitle: "Açık portlar…", action: #selector(portsClicked), keyEquivalent: "")
+        toolsMenu.addItem(withTitle: L("Video indir…", "Download video…"), action: #selector(downloaderClicked), keyEquivalent: "")
+        toolsMenu.addItem(withTitle: L("Açık portlar…", "Open ports…"), action: #selector(portsClicked), keyEquivalent: "")
         toolsMenu.items.forEach { $0.target = self }
         tools.submenu = toolsMenu
         menu.addItem(tools)
         let cleaningTitle = store.settings.resolvedCleaningTitle
         menu.addItem(
-            withTitle: store.cleaningMode ? "\(cleaningTitle) — kapat" : cleaningTitle,
+            withTitle: store.cleaningMode ? Lf("%1$@ — kapat", "%1$@ — stop", cleaningTitle) : cleaningTitle,
             action: #selector(toggleCleaning),
             keyEquivalent: ""
         )
-        menu.addItem(withTitle: store.settings.alwaysWake ? "Always Wake: kapat" : "Always Wake", action: #selector(toggleWake), keyEquivalent: "")
+        menu.addItem(withTitle: store.settings.alwaysWake ? L("Always Wake: kapat", "Always Wake: turn off") : "Always Wake", action: #selector(toggleWake), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Çıkış", action: #selector(quitClicked), keyEquivalent: "q")
+        menu.addItem(withTitle: L("Çıkış", "Quit"), action: #selector(quitClicked), keyEquivalent: "q")
         menu.items.forEach { $0.target = self }
         if let button = extra.item.button {
             menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)

@@ -15,9 +15,15 @@ enum GrokAuthError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .signedOut:
-            return "grok login oturumu yok. Terminalde grok login çalıştır, sonra Yenile."
+            return L(
+                "grok login oturumu yok. Terminalde grok login çalıştır, sonra Yenile.",
+                "No grok login session. Run grok login in Terminal, then press Refresh."
+            )
         case .relogin:
-            return "Grok oturumunun süresi dolmuş. Terminalde grok login çalıştır, sonra Yenile."
+            return L(
+                "Grok oturumunun süresi dolmuş. Terminalde grok login çalıştır, sonra Yenile.",
+                "Grok session expired. Run grok login in Terminal, then press Refresh."
+            )
         case .failed(let message):
             return message
         }
@@ -70,17 +76,20 @@ enum GrokAuth {
     @discardableResult
     static func openLogin() -> String? {
         guard let binary = ProcessRunner.which("grok") else {
-            return "grok komutu bulunamadı. Grok’u yükle, sonra Terminal’de grok login çalıştır."
+            return L(
+                "grok komutu bulunamadı. Grok’u yükle, sonra Terminal’de grok login çalıştır.",
+                "grok command not found. Install Grok, then run grok login in Terminal."
+            )
         }
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("hilal-grok-login.command")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("hal-grok-login.command")
         let body = """
         #!/bin/zsh
-        echo "Grok girişi"
-        echo "Tarayıcı açılırsa login ol. Bitince bu pencereyi kapat, Hâl’de Yenile’ye bas."
+        echo "\(L("Grok girişi", "Grok sign-in"))"
+        echo "\(L("Tarayıcı açılırsa login ol. Bitince bu pencereyi kapat, Hâl’de Yenile’ye bas.", "If a browser opens, sign in. When done, close this window and press Refresh in Hâl."))"
         echo
         \(shellEscape(binary)) login
         echo
-        echo "Giriş bittiyse bu pencereyi kapat, Hâl’de Yenile’ye bas."
+        echo "\(L("Giriş bittiyse bu pencereyi kapat, Hâl’de Yenile’ye bas.", "If sign-in finished, close this window and press Refresh in Hâl."))"
         echo
         exec /bin/zsh
         """
@@ -132,10 +141,10 @@ enum GrokAuth {
         do {
             data = try Data(contentsOf: url)
         } catch {
-            throw GrokAuthError.failed("Grok oturum dosyası okunamadı.")
+            throw GrokAuthError.failed(L("Grok oturum dosyası okunamadı.", "Could not read the Grok session file."))
         }
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw GrokAuthError.failed("Grok oturum dosyası okunamadı.")
+            throw GrokAuthError.failed(L("Grok oturum dosyası okunamadı.", "Could not read the Grok session file."))
         }
         guard let session = pick(root) else { throw GrokAuthError.signedOut }
         return session
@@ -244,18 +253,22 @@ enum GrokAuth {
         do {
             (data, response) = try await URLSession.shared.data(for: request)
         } catch {
-            throw GrokAuthError.failed("Grok oturumu yenilenemedi.")
+            throw GrokAuthError.failed(L("Grok oturumu yenilenemedi.", "Could not refresh the Grok session."))
         }
         guard let http = response as? HTTPURLResponse else {
-            throw GrokAuthError.failed("Grok oturumu yenilenemedi.")
+            throw GrokAuthError.failed(L("Grok oturumu yenilenemedi.", "Could not refresh the Grok session."))
         }
         guard (200..<300).contains(http.statusCode) else {
             if http.statusCode == 400 || http.statusCode == 401 { throw GrokAuthError.relogin }
-            throw GrokAuthError.failed("Grok oturumu yenilenemedi (HTTP \(http.statusCode)).")
+            throw GrokAuthError.failed(Lf(
+                "Grok oturumu yenilenemedi (HTTP %1$d).",
+                "Could not refresh the Grok session (HTTP %1$d).",
+                http.statusCode
+            ))
         }
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let token = string(object["access_token"]), !token.isEmpty else {
-            throw GrokAuthError.failed("Grok oturumu yenilenemedi.")
+            throw GrokAuthError.failed(L("Grok oturumu yenilenemedi.", "Could not refresh the Grok session."))
         }
         let nextRefresh = string(object["refresh_token"]).flatMap { $0.isEmpty ? nil : $0 } ?? refreshToken
         let expires: Date
@@ -283,14 +296,14 @@ enum GrokAuth {
         }
         guard JSONSerialization.isValidJSONObject(root),
               let data = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys]) else {
-            throw GrokAuthError.failed("Grok oturumu kaydedilemedi.")
+            throw GrokAuthError.failed(L("Grok oturumu kaydedilemedi.", "Could not save the Grok session."))
         }
         let url = authFileURL()
         do {
             try data.write(to: url, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
         } catch {
-            throw GrokAuthError.failed("Grok oturumu kaydedilemedi.")
+            throw GrokAuthError.failed(L("Grok oturumu kaydedilemedi.", "Could not save the Grok session."))
         }
     }
 
@@ -376,5 +389,5 @@ private final class RefreshGate: @unchecked Sendable {
 }
 
 extension Notification.Name {
-    static let hilalGrokSessionChanged = Notification.Name("hilal.grokSessionChanged")
+    static let halGrokSessionChanged = Notification.Name("hal.grokSessionChanged")
 }

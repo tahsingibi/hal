@@ -11,10 +11,10 @@ enum DockEdge: String, Codable, CaseIterable, Sendable, Identifiable {
 
     var title: String {
         switch self {
-        case .top: return "Üst"
-        case .bottom: return "Alt"
-        case .leading: return "Sol"
-        case .trailing: return "Sağ"
+        case .top: return L("Üst", "Top")
+        case .bottom: return L("Alt", "Bottom")
+        case .leading: return L("Sol", "Left")
+        case .trailing: return L("Sağ", "Right")
         }
     }
 }
@@ -32,7 +32,7 @@ enum ProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .claude: return "Claude"
         case .codex: return "Codex"
         case .grok: return "Grok"
-        case .custom: return "Özel"
+        case .custom: return L("Özel", "Custom")
         }
     }
 
@@ -64,8 +64,8 @@ enum CustomSourceKind: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .manual: return "Manuel"
-        case .command: return "Komut"
+        case .manual: return L("Manuel", "Manual")
+        case .command: return L("Komut", "Command")
         case .url: return "URL"
         }
     }
@@ -126,20 +126,6 @@ struct CustomProvider: Identifiable, Codable, Equatable, Hashable, Sendable {
     }
 }
 
-/// Günlük okunacak dua/zikir kaydı. Metin uygulamayla gelmiyor — kullanıcı kendi
-/// listesini tanımlar; uygulama yalnızca "bugün okundu mu" bilgisini tutar.
-struct DuaItem: Identifiable, Codable, Equatable, Hashable, Sendable {
-    var id: UUID
-    var name: String
-
-    init(id: UUID = UUID(), name: String) {
-        self.id = id
-        self.name = name
-    }
-
-    var metric: String { "dua.\(id.uuidString)" }
-}
-
 /// Menü çubuğundaki bir ikona tıklayınca ne açılsın?
 enum MenuBarClickTarget: String, Codable, CaseIterable, Identifiable, Sendable {
     /// Hangi ikona basılırsa basılsın pano açılır.
@@ -152,8 +138,8 @@ enum MenuBarClickTarget: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .today: return "Bugün panosu"
-        case .item: return "Tıklanan öğenin detayı"
+        case .today: return L("Bugün panosu", "Today board")
+        case .item: return L("Tıklanan öğenin detayı", "The clicked item")
         }
     }
 }
@@ -213,14 +199,9 @@ struct AppSettings: Codable, Equatable, Sendable {
     var proteinStepG: Double = 30
     /// 0 ise su/protein satırları panoda görünmez.
     var trackIntake: Bool = false
-    var trackQuran: Bool = false
-    var quranGoalPages: Double = 5
     var subscriptions: [Subscription] = []
     /// Yenilemeden kaç gün önce haber verilsin.
     var notifyRenewalDays: Int = 3
-    var trackDua: Bool = false
-    /// Kullanıcının kendi listesi; içerik uygulamayla gelmiyor, sen tanımlıyorsun.
-    var duaList: [DuaItem] = []
     var trackMedication: Bool = false
     var medications: [Medication] = []
     /// Doz saatinde bildirim gönder.
@@ -241,6 +222,8 @@ struct AppSettings: Codable, Equatable, Sendable {
     var dayCloseHour: Int = 12
     /// Bugün panosunda gizlenen satırların kimlikleri.
     var hiddenSummaryLines: [String] = []
+    /// Yoksa sistem dili. Türkçe değilse İngilizce.
+    var language: LanguageChoice = .system
 
     var downloadDestination: URL {
         let trimmed = downloadFolder.trimmingCharacters(in: .whitespaces)
@@ -258,9 +241,14 @@ struct AppSettings: Codable, Equatable, Sendable {
         return !(latitude == 0 && longitude == 0)
     }
 
-    static let defaultCleaningTitle = "Temizlik modu"
-    static let defaultCleaningHint = "Klavye ve trackpad tıklamaları kilitli.\nKapatmak için düğmeye veya Hâl ikonuna tıklayın."
-    static let defaultCleaningButtonTitle = "Temizlik modunu kapat"
+    static var defaultCleaningTitle: String { L("Temizlik modu", "Cleaning mode") }
+    static var defaultCleaningHint: String {
+        L(
+            "Klavye ve trackpad tıklamaları kilitli.\nKapatmak için düğmeye veya Hâl ikonuna tıklayın.",
+            "Keyboard and trackpad clicks are locked.\nClick the button or the Hâl icon to stop."
+        )
+    }
+    static var defaultCleaningButtonTitle: String { L("Temizlik modunu kapat", "Stop cleaning mode") }
 
     var resolvedCleaningTitle: String {
         let trimmed = cleaningTitle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -275,12 +263,12 @@ struct AppSettings: Codable, Equatable, Sendable {
     var resolvedCleaningButtonTitle: String {
         cleaningTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? Self.defaultCleaningButtonTitle
-            : "Kapat"
+            : L("Kapat", "Stop")
     }
 
     var resolvedCleaningMenuTitle: String {
         let trimmed = cleaningTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "Temizlik" : trimmed
+        return trimmed.isEmpty ? L("Temizlik", "Cleaning") : trimmed
     }
 
     enum CodingKeys: String, CodingKey {
@@ -294,11 +282,11 @@ struct AppSettings: Codable, Equatable, Sendable {
         case focusTracking, focusGoalMinutes, focusApps, trackPrayers
         case waterGoalML, proteinGoalG, trackIntake, notifyDailySummary, dailySummaryHour
         case notifyDayClose, dayCloseHour
-        case trackQuran, quranGoalPages, subscriptions, notifyRenewalDays
-        case trackWorkout, workoutPlan, trackDua, duaList
+        case subscriptions, notifyRenewalDays
+        case trackWorkout, workoutPlan
         case trackMedication, medications, notifyMedication
         case downloadFormat, downloadFolder, waterStepML, proteinStepG, downloaderAutoUpdate
-        case hiddenSummaryLines
+        case hiddenSummaryLines, language
     }
 
     init() {}
@@ -353,8 +341,6 @@ struct AppSettings: Codable, Equatable, Sendable {
         dailySummaryHour = try c.decodeIfPresent(Int.self, forKey: .dailySummaryHour) ?? 21
         notifyDayClose = try c.decodeIfPresent(Bool.self, forKey: .notifyDayClose) ?? true
         dayCloseHour = try c.decodeIfPresent(Int.self, forKey: .dayCloseHour) ?? 12
-        trackQuran = try c.decodeIfPresent(Bool.self, forKey: .trackQuran) ?? false
-        quranGoalPages = try c.decodeIfPresent(Double.self, forKey: .quranGoalPages) ?? 5
         subscriptions = try c.decodeIfPresent([Subscription].self, forKey: .subscriptions) ?? []
         notifyRenewalDays = try c.decodeIfPresent(Int.self, forKey: .notifyRenewalDays) ?? 3
         downloadFormat = try c.decodeIfPresent(DownloadService.Format.self, forKey: .downloadFormat) ?? .mp4
@@ -362,13 +348,12 @@ struct AppSettings: Codable, Equatable, Sendable {
         downloaderAutoUpdate = try c.decodeIfPresent(Bool.self, forKey: .downloaderAutoUpdate) ?? true
         waterStepML = try c.decodeIfPresent(Double.self, forKey: .waterStepML) ?? 250
         proteinStepG = try c.decodeIfPresent(Double.self, forKey: .proteinStepG) ?? 30
-        trackDua = try c.decodeIfPresent(Bool.self, forKey: .trackDua) ?? false
-        duaList = try c.decodeIfPresent([DuaItem].self, forKey: .duaList) ?? []
         trackMedication = try c.decodeIfPresent(Bool.self, forKey: .trackMedication) ?? false
         medications = try c.decodeIfPresent([Medication].self, forKey: .medications) ?? []
         notifyMedication = try c.decodeIfPresent(Bool.self, forKey: .notifyMedication) ?? true
         trackWorkout = try c.decodeIfPresent(Bool.self, forKey: .trackWorkout) ?? false
         hiddenSummaryLines = try c.decodeIfPresent([String].self, forKey: .hiddenSummaryLines) ?? []
+        language = try c.decodeIfPresent(LanguageChoice.self, forKey: .language) ?? .system
         let storedPlan = try c.decodeIfPresent([String].self, forKey: .workoutPlan) ?? Workout.defaultPlan
         workoutPlan = storedPlan.count == 7 ? storedPlan : Workout.defaultPlan
     }
@@ -419,8 +404,6 @@ struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(dailySummaryHour, forKey: .dailySummaryHour)
         try c.encode(notifyDayClose, forKey: .notifyDayClose)
         try c.encode(dayCloseHour, forKey: .dayCloseHour)
-        try c.encode(trackQuran, forKey: .trackQuran)
-        try c.encode(quranGoalPages, forKey: .quranGoalPages)
         try c.encode(subscriptions, forKey: .subscriptions)
         try c.encode(notifyRenewalDays, forKey: .notifyRenewalDays)
         try c.encode(downloadFormat, forKey: .downloadFormat)
@@ -428,14 +411,13 @@ struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(downloaderAutoUpdate, forKey: .downloaderAutoUpdate)
         try c.encode(waterStepML, forKey: .waterStepML)
         try c.encode(proteinStepG, forKey: .proteinStepG)
-        try c.encode(trackDua, forKey: .trackDua)
-        try c.encode(duaList, forKey: .duaList)
         try c.encode(trackMedication, forKey: .trackMedication)
         try c.encode(medications, forKey: .medications)
         try c.encode(notifyMedication, forKey: .notifyMedication)
         try c.encode(trackWorkout, forKey: .trackWorkout)
         try c.encode(workoutPlan, forKey: .workoutPlan)
         try c.encode(hiddenSummaryLines, forKey: .hiddenSummaryLines)
+        try c.encode(language, forKey: .language)
     }
 
     func isModuleEnabled(_ module: ModuleKind) -> Bool {
@@ -569,9 +551,9 @@ struct QuotaGroup: Identifiable, Equatable, Sendable {
     var tooltip: String {
         switch status {
         case .loading:
-            return "\(name): yükleniyor…"
+            return Lf("%1$@: yükleniyor…", "%1$@: loading…", name)
         case .missingAuth:
-            return "\(name): \(message ?? "oturum yok")"
+            return Lf("%1$@: %2$@", "%1$@: %2$@", name, message ?? L("oturum yok", "no session"))
         case .error(let reason):
             return "\(name): \(message ?? reason)"
         case .ready:
@@ -589,6 +571,8 @@ struct PrayerTime: Identifiable, Equatable, Sendable {
     var name: String
     var time: Date
     var isSunnah: Bool
+
+    var localizedName: String { PrayerCopy.name(id: id) }
 }
 
 struct PrayerDay: Equatable, Sendable {
@@ -616,6 +600,9 @@ struct PlaceCountry: Identifiable, Hashable, Sendable {
     var id: String { code }
     var name: String
     var code: String
+
+    /// Listedeki ad. Kayıttaki `settings.country` dil değişince eski dilde kalabilir.
+    var localizedName: String { CountryNames.display(code: code, turkish: name) }
 }
 
 struct PlaceRegion: Identifiable, Hashable, Sendable {
@@ -634,30 +621,36 @@ struct PlaceCity: Identifiable, Hashable, Sendable {
 
 struct CalculationMethod: Identifiable, Hashable, Sendable {
     var id: Int
-    var name: String
+    var name: String { CalculationMethods.name(for: id) }
 }
 
 enum CalculationMethods {
-    static let all: [CalculationMethod] = [
-        .init(id: 13, name: "Diyanet İşleri (Türkiye)"),
-        .init(id: 3, name: "Muslim World League"),
-        .init(id: 2, name: "ISNA"),
-        .init(id: 5, name: "Mısır"),
-        .init(id: 4, name: "Ümmül-Kura (Mekke)"),
-        .init(id: 1, name: "Karaçi"),
-        .init(id: 8, name: "Körfez"),
-        .init(id: 9, name: "Kuveyt"),
-        .init(id: 10, name: "Katar"),
-        .init(id: 7, name: "Tahran"),
-        .init(id: 14, name: "Rusya"),
-        .init(id: 12, name: "Fransa"),
-        .init(id: 21, name: "Fas"),
-        .init(id: 19, name: "Cezayir"),
-        .init(id: 18, name: "Tunus"),
-        .init(id: 17, name: "Malezya (JAKIM)"),
-        .init(id: 20, name: "Endonezya (Kemenag)"),
-        .init(id: 23, name: "Ürdün")
-    ]
+    static let all: [CalculationMethod] = [13, 3, 2, 5, 4, 1, 8, 9, 10, 7, 14, 12, 21, 19, 18, 17, 20, 23]
+        .map { CalculationMethod(id: $0) }
+
+    static func name(for id: Int) -> String {
+        switch id {
+        case 13: return L("Diyanet İşleri (Türkiye)", "Diyanet (Turkey)")
+        case 3: return "Muslim World League"
+        case 2: return "ISNA"
+        case 5: return L("Mısır", "Egypt")
+        case 4: return L("Ümmül-Kura (Mekke)", "Umm al-Qura (Makkah)")
+        case 1: return L("Karaçi", "Karachi")
+        case 8: return L("Körfez", "Gulf")
+        case 9: return L("Kuveyt", "Kuwait")
+        case 10: return L("Katar", "Qatar")
+        case 7: return L("Tahran", "Tehran")
+        case 14: return L("Rusya", "Russia")
+        case 12: return L("Fransa", "France")
+        case 21: return L("Fas", "Morocco")
+        case 19: return L("Cezayir", "Algeria")
+        case 18: return L("Tunus", "Tunisia")
+        case 17: return L("Malezya (JAKIM)", "Malaysia (JAKIM)")
+        case 20: return L("Endonezya (Kemenag)", "Indonesia (Kemenag)")
+        case 23: return L("Ürdün", "Jordan")
+        default: return "\(id)"
+        }
+    }
 
     static func recommended(for countryCode: String) -> (method: Int, school: Int) {
         switch countryCode.uppercased() {
@@ -681,7 +674,7 @@ enum CalculationMethods {
     }
 }
 
-enum HilalError: LocalizedError, Sendable {
+enum HalError: LocalizedError, Sendable {
     case message(String)
 
     var errorDescription: String? {

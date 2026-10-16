@@ -5,13 +5,20 @@ import ServiceManagement
 @MainActor
 final class AppStore: ObservableObject {
     @Published var settings: AppSettings {
-        didSet { persist() }
+        willSet { Language.apply(newValue.language) }
+        didSet {
+            let languageChanged = oldValue.language != settings.language
+            persist()
+            if languageChanged {
+                Task { await refresh() }
+            }
+        }
     }
     @Published var quotas: [QuotaGroup] = []
     @Published var prayers: PrayerDay?
     @Published var expanded = false
-    @Published var pinned = UserDefaults.standard.bool(forKey: "hilal.pinned") {
-        didSet { UserDefaults.standard.set(pinned, forKey: "hilal.pinned") }
+    @Published var pinned = UserDefaults.standard.bool(forKey: "hal.pinned") {
+        didSet { UserDefaults.standard.set(pinned, forKey: "hal.pinned") }
     }
     @Published var isDragging = false
     @Published var selection: DetailTarget?
@@ -41,17 +48,18 @@ final class AppStore: ObservableObject {
     init() {
         self.settings = Self.loadSettings()
         self.settings.expandOnHover = false
-        self.lastQuotaID = UserDefaults.standard.string(forKey: "hilal.lastQuota")
+        self.lastQuotaID = UserDefaults.standard.string(forKey: "hal.lastQuota")
         self.lastPageByModule = Self.loadLastPages().mapValues { Optional($0) }
         self.selection = Self.loadRememberedTarget()
         self.summaryCatalog = Self.loadSummaryCatalog()
-        if !UserDefaults.standard.bool(forKey: "hilal.migrated.asr.tr"),
+        if !UserDefaults.standard.bool(forKey: "hal.migrated.asr.tr"),
            self.settings.countryCode.uppercased() == "TR",
            self.settings.method == 13,
            self.settings.school == 1 {
             self.settings.school = 0
-            UserDefaults.standard.set(true, forKey: "hilal.migrated.asr.tr")
+            UserDefaults.standard.set(true, forKey: "hal.migrated.asr.tr")
         }
+        Language.apply(settings.language)
         Task { await bootstrap() }
         startTick()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 180, repeats: true) { [weak self] _ in
@@ -61,7 +69,7 @@ final class AppStore: ObservableObject {
         }
         refreshTimer?.tolerance = 20
         NotificationCenter.default.addObserver(
-            forName: .hilalCleaningEnded,
+            forName: .halCleaningEnded,
             object: nil,
             queue: .main
         ) { [weak self] _ in
@@ -71,7 +79,7 @@ final class AppStore: ObservableObject {
             }
         }
         NotificationCenter.default.addObserver(
-            forName: .hilalGrokSessionChanged,
+            forName: .halGrokSessionChanged,
             object: nil,
             queue: .main
         ) { [weak self] _ in
@@ -94,13 +102,13 @@ final class AppStore: ObservableObject {
         switch module {
         case .today:
             return [
-                ModulePage(module: .today, item: nil, title: "Bugün", icon: .app, menuBarID: nil),
-                ModulePage(module: .today, item: "week", title: "Hafta", icon: .app, menuBarID: nil),
-                ModulePage(module: .today, item: "end", title: "Gün Sonu", icon: .app, menuBarID: nil)
+                ModulePage(module: .today, item: nil, title: L("Bugün", "Today"), icon: .app, menuBarID: nil),
+                ModulePage(module: .today, item: "week", title: L("Hafta", "Week"), icon: .app, menuBarID: nil),
+                ModulePage(module: .today, item: "end", title: L("Gün Sonu", "End of day"), icon: .app, menuBarID: nil)
             ]
         case .focus:
             return [
-                ModulePage(module: .focus, item: nil, title: "Odak", icon: .app, menuBarID: nil)
+                ModulePage(module: .focus, item: nil, title: L("Odak", "Focus"), icon: .app, menuBarID: nil)
             ]
         case .usage:
             return quotas.map { group in
@@ -113,41 +121,30 @@ final class AppStore: ObservableObject {
                 )
             }
         case .prayer:
-            var pages = [
-                ModulePage(module: .prayer, item: nil, title: "Vakitler", icon: .prayer, menuBarID: "prayer")
+            return [
+                ModulePage(module: .prayer, item: nil, title: L("Vakitler", "Prayer times"), icon: .prayer, menuBarID: "prayer")
             ]
-            if settings.trackQuran {
-                pages.append(
-                    ModulePage(module: .prayer, item: "quran", title: "Kur’an", icon: .app, menuBarID: nil)
-                )
-            }
-            if settings.trackDua, !settings.duaList.isEmpty {
-                pages.append(
-                    ModulePage(module: .prayer, item: "dua", title: "Dua", icon: .app, menuBarID: nil)
-                )
-            }
-            return pages
         case .calendar:
             return [
-                ModulePage(module: .calendar, item: nil, title: "Takvim", icon: .app, menuBarID: nil)
+                ModulePage(module: .calendar, item: nil, title: L("Takvim", "Calendar"), icon: .app, menuBarID: nil)
             ]
         case .fitness:
-            var pages = [ModulePage(module: .fitness, item: nil, title: "Genel", icon: .app, menuBarID: nil)]
+            var pages = [ModulePage(module: .fitness, item: nil, title: L("Genel", "Overview"), icon: .app, menuBarID: nil)]
             if settings.trackWorkout {
-                pages.append(ModulePage(module: .fitness, item: "workout", title: "Antrenman", icon: .app, menuBarID: nil))
+                pages.append(ModulePage(module: .fitness, item: "workout", title: L("Antrenman", "Workout"), icon: .app, menuBarID: nil))
             }
             if settings.trackMedication, !settings.medications.isEmpty {
                 pages.append(
-                    ModulePage(module: .fitness, item: "meds", title: "İlaç & Takviye", icon: .app, menuBarID: nil)
+                    ModulePage(module: .fitness, item: "meds", title: L("İlaç & Takviye", "Meds & supplements"), icon: .app, menuBarID: nil)
                 )
             }
             if settings.trackIntake {
-                pages.append(ModulePage(module: .fitness, item: "nutrition", title: "Beslenme", icon: .app, menuBarID: nil))
+                pages.append(ModulePage(module: .fitness, item: "nutrition", title: L("Beslenme", "Nutrition"), icon: .app, menuBarID: nil))
             }
             return pages
         case .money:
             return [
-                ModulePage(module: .money, item: nil, title: "Ödemeler", icon: .app, menuBarID: nil)
+                ModulePage(module: .money, item: nil, title: L("Ödemeler", "Payments"), icon: .app, menuBarID: nil)
             ]
         }
     }
@@ -182,9 +179,9 @@ final class AppStore: ObservableObject {
         return [SummaryLine(
             id: "focus",
             icon: "scope",
-            title: "Derin çalışma",
+            title: L("Derin çalışma", "Deep work"),
             value: TimeFormatters.duration(seconds),
-            detail: FocusTracker.shared.currentApp.map { "şu an \($0)" },
+            detail: FocusTracker.shared.currentApp.map { Lf("şu an %1$@", "now %1$@", $0) },
             progress: goal > 0 ? min(seconds / goal, 1) : nil,
             tintHex: "7C5CFF",
             target: DetailTarget(module: .focus)
@@ -198,13 +195,13 @@ final class AppStore: ObservableObject {
                 SummaryLine(
                     id: "prayer.next",
                     icon: "moon.stars",
-                    title: "Namaz",
-                    value: "Konum seç",
-                    detail: "Ayarlar › İbadet",
+                    title: L("Namaz", "Prayer"),
+                    value: L("Konum seç", "Choose location"),
+                    detail: L("Ayarlar › İbadet", "Settings › Prayer"),
                     progress: nil,
                     tintHex: nil,
                     target: DetailTarget(module: .prayer),
-                    catalogTitle: "Sıradaki vakit"
+                    catalogTitle: L("Sıradaki vakit", "Next prayer")
                 )
             )
         } else if let next = nextPrayer, let day = prayers {
@@ -212,43 +209,13 @@ final class AppStore: ObservableObject {
                 SummaryLine(
                     id: "prayer.next",
                     icon: "moon.stars",
-                    title: next.name,
+                    title: next.localizedName,
                     value: TimeFormatters.clock(next.time),
-                    detail: TimeFormatters.remaining(day.remaining(to: next, now: now)) + " kaldı",
+                    detail: Lf("%1$@ kaldı", "%1$@ left", TimeFormatters.remaining(day.remaining(to: next, now: now))),
                     progress: nil,
                     tintHex: nil,
                     target: DetailTarget(module: .prayer),
-                    catalogTitle: "Sıradaki vakit"
-                )
-            )
-        }
-        if settings.trackQuran {
-            let pages = DailyLog.shared.value(Metric.quranPages, on: now)
-            lines.append(
-                SummaryLine(
-                    id: "quran",
-                    icon: "book",
-                    title: "Kur’an",
-                    value: "\(Int(pages)) / \(Int(settings.quranGoalPages)) sayfa",
-                    detail: quranStreak > 1 ? "\(quranStreak) gün seri" : nil,
-                    progress: settings.quranGoalPages > 0 ? min(pages / settings.quranGoalPages, 1) : nil,
-                    tintHex: "5BC48A",
-                    target: DetailTarget(module: .prayer, item: "quran")
-                )
-            )
-        }
-        if settings.trackDua, !settings.duaList.isEmpty {
-            let done = duaDoneCount
-            lines.append(
-                SummaryLine(
-                    id: "dua",
-                    icon: "hands.and.sparkles",
-                    title: "Dua",
-                    value: "\(done)/\(settings.duaList.count)",
-                    detail: duaStreak > 1 ? "\(duaStreak) gün seri" : nil,
-                    progress: Double(done) / Double(settings.duaList.count),
-                    tintHex: "5BC48A",
-                    target: DetailTarget(module: .prayer, item: "dua")
+                    catalogTitle: L("Sıradaki vakit", "Next prayer")
                 )
             )
         }
@@ -259,9 +226,9 @@ final class AppStore: ObservableObject {
                 SummaryLine(
                     id: "prayer.done",
                     icon: "checkmark.circle",
-                    title: "Kılınan",
+                    title: L("Kılınan", "Prayed"),
                     value: "\(done)/\(obligatory.count)",
-                    detail: prayerStreak > 1 ? "\(prayerStreak) gün seri" : nil,
+                    detail: prayerStreak > 1 ? Lf("%1$d gün seri", "%1$d-day streak", prayerStreak) : nil,
                     progress: obligatory.isEmpty ? nil : Double(done) / Double(obligatory.count),
                     tintHex: "5BC48A",
                     target: DetailTarget(module: .prayer)
@@ -278,7 +245,7 @@ final class AppStore: ObservableObject {
                 SummaryLine(
                     id: "usage.best",
                     icon: "bolt",
-                    title: "En boş kota",
+                    title: L("En boş kota", "Most remaining"),
                     value: "\(best.name) \(Int((percent * 100).rounded()))%",
                     detail: best.headlineWindow?.resetText.nilIfEmpty,
                     progress: percent,
@@ -293,7 +260,7 @@ final class AppStore: ObservableObject {
                 SummaryLine(
                     id: "usage.full",
                     icon: "exclamationmark.triangle",
-                    title: "Dolu",
+                    title: L("Dolu", "Full"),
                     value: full.map(\.name).joined(separator: ", "),
                     detail: full.first?.headlineWindow?.resetText.nilIfEmpty,
                     progress: nil,
@@ -308,7 +275,7 @@ final class AppStore: ObservableObject {
                 SummaryLine(
                     id: "usage.broken",
                     icon: "xmark.circle",
-                    title: "Okunamıyor",
+                    title: L("Okunamıyor", "Unreadable"),
                     value: broken.map(\.name).joined(separator: ", "),
                     detail: nil,
                     progress: nil,
@@ -328,15 +295,20 @@ final class AppStore: ObservableObject {
             SummaryLine(
                 id: "calendar.next",
                 icon: "calendar",
-                title: running ? "Şu an" : "Sonraki olay",
+                title: running ? L("Şu an", "Now") : L("Sonraki olay", "Next event"),
                 value: event.title,
                 detail: running
-                    ? "\(TimeFormatters.clock(event.end))’a kadar"
-                    : "\(TimeFormatters.clock(event.start)) · \(TimeFormatters.remaining(event.start.timeIntervalSince(now))) kaldı",
+                    ? Lf("%1$@’a kadar", "until %1$@", TimeFormatters.clock(event.end))
+                    : Lf(
+                        "%1$@ · %2$@ kaldı",
+                        "%1$@ · %2$@ left",
+                        TimeFormatters.clock(event.start),
+                        TimeFormatters.remaining(event.start.timeIntervalSince(now))
+                    ),
                 progress: nil,
                 tintHex: running ? "5BC48A" : nil,
                 target: DetailTarget(module: .calendar),
-                catalogTitle: "Sonraki olay"
+                catalogTitle: L("Sonraki olay", "Next event")
             )
         ]
     }
@@ -352,9 +324,11 @@ final class AppStore: ObservableObject {
                 SummaryLine(
                     id: "medication",
                     icon: "pills",
-                    title: "İlaç & Takviye",
+                    title: L("İlaç & Takviye", "Meds & supplements"),
                     value: "\(taken)/\(doses.count)",
-                    detail: overdue.isEmpty ? next.map { "sıradaki \($0.clock)" } : "\(overdue.count) doz geçti",
+                    detail: overdue.isEmpty
+                        ? next.map { Lf("sıradaki %1$@", "next %1$@", $0.clock) }
+                        : Lf("%1$d doz geçti", "%1$d doses missed", overdue.count),
                     progress: doses.isEmpty ? nil : Double(taken) / Double(doses.count),
                     tintHex: overdue.isEmpty ? "5BC48A" : "E8A04A",
                     target: DetailTarget(module: .fitness, item: "meds")
@@ -369,9 +343,9 @@ final class AppStore: ObservableObject {
                 SummaryLine(
                     id: "workout",
                     icon: rest ? "figure.cooldown" : "figure.strengthtraining.traditional",
-                    title: "Antrenman",
-                    value: rest ? "Dinlenme" : label,
-                    detail: rest ? nil : (done ? "tamamlandı" : (workoutStreak > 1 ? "\(workoutStreak) antrenman seri" : "bekliyor")),
+                    title: L("Antrenman", "Workout"),
+                    value: rest ? L("Dinlenme", "Rest") : label,
+                    detail: rest ? nil : (done ? L("tamamlandı", "done") : (workoutStreak > 1 ? Lf("%1$d antrenman seri", "%1$d-workout streak", workoutStreak) : L("bekliyor", "waiting"))),
                     progress: nil,
                     tintHex: done ? "5BC48A" : (rest ? nil : "E8A04A"),
                     target: DetailTarget(module: .fitness, item: "workout")
@@ -388,9 +362,9 @@ final class AppStore: ObservableObject {
             SummaryLine(
                 id: "money.next",
                 icon: "creditcard",
-                title: "Sıradaki ödeme",
+                title: L("Sıradaki ödeme", "Next payment"),
                 value: "\(next.name) \(next.amountText)",
-                detail: days == 0 ? "bugün" : "\(days) gün sonra",
+                detail: LInDays(days),
                 progress: nil,
                 tintHex: days <= 3 ? "E8A04A" : nil,
                 target: DetailTarget(module: .money)
@@ -404,7 +378,7 @@ final class AppStore: ObservableObject {
             SummaryLine(
                 id: "downloader",
                 icon: "arrow.down.circle",
-                title: "İndiriliyor",
+                title: L("İndiriliyor", "Downloading"),
                 value: "\(Int(progress * 100))%",
                 detail: nil,
                 progress: progress,
@@ -434,7 +408,7 @@ final class AppStore: ObservableObject {
     }
 
     func addMedication() {
-        settings.medications.append(Medication(name: "Yeni", times: [9 * 60]))
+        settings.medications.append(Medication(name: L("Yeni", "New"), times: [9 * 60]))
         Task { await refreshMedicationNotifications() }
     }
 
@@ -487,8 +461,8 @@ final class AppStore: ObservableObject {
                 SummaryLine(
                     id: "water",
                     icon: "drop",
-                    title: "Su",
-                    value: String(format: "%.1f / %.1f L", water / 1000, settings.waterGoalML / 1000),
+                    title: L("Su", "Water"),
+                    value: String(format: "%.1f / %.1f L", locale: Language.locale, water / 1000, settings.waterGoalML / 1000),
                     detail: nil,
                     progress: settings.waterGoalML > 0 ? min(water / settings.waterGoalML, 1) : nil,
                     tintHex: "4AA8E8",
@@ -590,46 +564,6 @@ final class AppStore: ObservableObject {
         objectWillChange.send()
     }
 
-    var duaDoneCount: Int {
-        settings.duaList.filter { DailyLog.shared.isSet($0.metric, on: now) }.count
-    }
-
-    /// Listenin tamamının okunduğu kesintisiz gün sayısı.
-    var duaStreak: Int {
-        let metrics = settings.duaList.map(\.metric)
-        guard !metrics.isEmpty else { return 0 }
-        return DailyLog.shared.streak(on: now) { values in
-            metrics.allSatisfy { (values[$0] ?? 0) > 0 }
-        }
-    }
-
-    func toggleDua(_ item: DuaItem) {
-        DailyLog.shared.toggle(item.metric, on: now)
-        objectWillChange.send()
-    }
-
-    func isDuaDone(_ item: DuaItem) -> Bool {
-        DailyLog.shared.isSet(item.metric, on: now)
-    }
-
-    func addDua(_ name: String) {
-        let trimmed = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
-        settings.duaList.append(DuaItem(name: trimmed))
-    }
-
-    func removeDua(_ id: UUID) {
-        settings.duaList.removeAll { $0.id == id }
-    }
-
-    var quranStreak: Int {
-        let goal = settings.quranGoalPages
-        guard goal > 0 else { return 0 }
-        return DailyLog.shared.streak(on: now) { values in
-            (values[Metric.quranPages] ?? 0) >= goal
-        }
-    }
-
     func addSubscription(_ item: Subscription) {
         settings.subscriptions.append(item)
         Task { await refreshRenewalNotifications() }
@@ -665,10 +599,10 @@ final class AppStore: ObservableObject {
         let hour = Calendar.current.component(.hour, from: now)
         let base: String
         switch hour {
-        case 5..<11: base = "Günaydın"
-        case 11..<18: base = "İyi günler"
-        case 18..<22: base = "İyi akşamlar"
-        default: base = "İyi geceler"
+        case 5..<11: base = L("Günaydın", "Good morning")
+        case 11..<18: base = L("İyi günler", "Good afternoon")
+        case 18..<22: base = L("İyi akşamlar", "Good evening")
+        default: base = L("İyi geceler", "Good night")
         }
         let name = settings.displayName.trimmingCharacters(in: .whitespaces)
         return name.isEmpty ? base : "\(base) \(name)"
@@ -702,7 +636,7 @@ final class AppStore: ObservableObject {
                     due = time <= now
                 }
                 return DayClose.Item(
-                    title: prayer.name,
+                    title: PrayerCopy.name(id: prayer.id),
                     detail: isToday ? time.map(TimeFormatters.clock) : nil,
                     metric: Metric.prayer(prayer.id),
                     due: due
@@ -711,7 +645,7 @@ final class AppStore: ObservableObject {
             sections.append(
                 DayClose.Section(
                     id: "prayer",
-                    title: "Namaz",
+                    title: L("Namaz", "Prayer"),
                     icon: "moon.stars",
                     tintHex: "5BC48A",
                     items: items,
@@ -729,7 +663,7 @@ final class AppStore: ObservableObject {
                 sections.append(
                     DayClose.Section(
                         id: "meds",
-                        title: "İlaç & Takviye",
+                        title: L("İlaç & Takviye", "Meds & supplements"),
                         icon: "pills",
                         tintHex: "5BC48A",
                         items: doses.map { dose in
@@ -747,28 +681,13 @@ final class AppStore: ObservableObject {
             }
         }
 
-        if settings.isModuleEnabled(.prayer), settings.trackDua, !settings.duaList.isEmpty {
-            sections.append(
-                DayClose.Section(
-                    id: "dua",
-                    title: "Dua",
-                    icon: "hands.and.sparkles",
-                    tintHex: "5BC48A",
-                    items: settings.duaList.map {
-                        DayClose.Item(title: $0.name, detail: nil, metric: $0.metric, due: true)
-                    },
-                    target: DetailTarget(module: .prayer, item: "dua")
-                )
-            )
-        }
-
         if settings.isModuleEnabled(.fitness), settings.trackWorkout {
             let label = Workout.plan(settings.workoutPlan, on: date)
             if !Workout.isRestDay(label) {
                 sections.append(
                     DayClose.Section(
                         id: "workout",
-                        title: "Antrenman",
+                        title: L("Antrenman", "Workout"),
                         icon: "figure.strengthtraining.traditional",
                         tintHex: "E8A04A",
                         items: [
@@ -831,10 +750,10 @@ final class AppStore: ObservableObject {
             count = pastHits.reduce(0) { $0 + $1.1 }
             detail = pastHits.count == 1
                 ? TimeFormatters.relativeDay(pastHits[0].0, now: now).lowercased()
-                : "\(pastHits.count) gün"
+                : Lf("%1$d gün", "%1$d days", pastHits.count)
         } else if evening, todayCount > 0 {
             count = todayCount
-            detail = "bugün"
+            detail = L("bugün", "today")
         } else {
             return []
         }
@@ -843,13 +762,13 @@ final class AppStore: ObservableObject {
             SummaryLine(
                 id: "dayclose",
                 icon: "sunset",
-                title: "Gün sonu",
-                value: "\(count) açık",
+                title: L("Gün sonu", "End of day"),
+                value: Lf("%1$d açık", "%1$d open", count),
                 detail: detail,
                 progress: nil,
                 tintHex: "E8A04A",
                 target: DetailTarget(module: .today, item: "end"),
-                catalogTitle: "Gün sonu"
+                catalogTitle: L("Gün sonu", "End of day")
             )
         ]
     }
@@ -1147,6 +1066,7 @@ final class AppStore: ObservableObject {
     /// üretiliyor, gizleme şansı yalnızca o ana sıkışmamalı.
     func recordSummaryCatalog() {
         var known = summaryCatalog.filter { settings.isModuleEnabled($0.module) }
+        known.removeAll { $0.id == "quran" || $0.id == "dua" }
         for line in allTodayLines {
             // Kalıcı olmayan satırlar (indirme ilerlemesi) kataloğa girmez.
             guard let module = line.target?.module else { continue }
@@ -1375,7 +1295,7 @@ final class AppStore: ObservableObject {
                 try SMAppService.mainApp.unregister()
             }
         } catch {
-            lastError = "Açılışta başlatma: \(error.localizedDescription)"
+            lastError = Lf("Açılışta başlatma: %1$@", "Launch at login: %1$@", error.localizedDescription)
         }
     }
 
@@ -1400,7 +1320,7 @@ final class AppStore: ObservableObject {
 
     private func persist() {
         if let data = try? JSONEncoder().encode(settings) {
-            UserDefaults.standard.set(data, forKey: "hilal.settings")
+            UserDefaults.standard.set(data, forKey: "hal.settings")
         }
     }
 
@@ -1431,26 +1351,26 @@ final class AppStore: ObservableObject {
         return pages.first?.target ?? DetailTarget(module: modules.first ?? .usage)
     }
 
-    private static let lastTargetKey = "hilal.lastTarget"
-    private static let lastPageKey = "hilal.lastPageByModule"
+    private static let lastTargetKey = "hal.lastTarget"
+    private static let lastPageKey = "hal.lastPageByModule"
 
     private static func loadRememberedTarget() -> DetailTarget? {
         if let stored = UserDefaults.standard.string(forKey: lastTargetKey) {
             // Eski sürümler "prayer" ya da düz kota kimliği yazıyordu; DetailTarget çözer.
             return DetailTarget(id: stored)
         }
-        if let last = UserDefaults.standard.string(forKey: "hilal.lastQuota") {
+        if let last = UserDefaults.standard.string(forKey: "hal.lastQuota") {
             return DetailTarget(module: .usage, item: last)
         }
         return nil
     }
 
-    private static let summaryCatalogKey = "hilal.summaryCatalog"
+    private static let summaryCatalogKey = "hal.summaryCatalog"
 
     private static func loadSummaryCatalog() -> [SummaryLineRef] {
         guard let data = UserDefaults.standard.data(forKey: summaryCatalogKey),
               let decoded = try? JSONDecoder().decode([SummaryLineRef].self, from: data) else { return [] }
-        return decoded
+        return decoded.filter { $0.id != "quran" && $0.id != "dua" }
     }
 
     private static func loadLastPages() -> [String: String] {
@@ -1458,7 +1378,7 @@ final class AppStore: ObservableObject {
     }
 
     private static func loadSettings() -> AppSettings {
-        guard let data = UserDefaults.standard.data(forKey: "hilal.settings"),
+        guard let data = UserDefaults.standard.data(forKey: "hal.settings"),
               var decoded = try? JSONDecoder().decode(AppSettings.self, from: data) else {
             return AppSettings()
         }

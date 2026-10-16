@@ -48,11 +48,13 @@ final class DeviceModes {
         var hint: String
         var buttonTitle: String
 
-        static let standard = CleaningCopy(
-            title: AppSettings.defaultCleaningTitle,
-            hint: AppSettings.defaultCleaningHint,
-            buttonTitle: AppSettings.defaultCleaningButtonTitle
-        )
+        static var standard: CleaningCopy {
+            CleaningCopy(
+                title: AppSettings.defaultCleaningTitle,
+                hint: AppSettings.defaultCleaningHint,
+                buttonTitle: AppSettings.defaultCleaningButtonTitle
+            )
+        }
     }
 
     @discardableResult
@@ -110,7 +112,7 @@ final class DeviceModes {
         presentAsRegularApp()
         shield.show(copy: copy) { [weak self] in
             _ = self?.setCleaning(false)
-            NotificationCenter.default.post(name: .hilalCleaningEnded, object: nil)
+            NotificationCenter.default.post(name: .halCleaningEnded, object: nil)
         }
         seizeBuiltInInput()
         installMonitors()
@@ -133,12 +135,20 @@ final class DeviceModes {
         if tapOK {
             return CleaningResult(
                 active: true,
-                message: "\(copy.title) açık. Dahili klavye ve trackpad tıklamaları kilitli. Kapatmak için düğmeye veya Hâl ikonuna tıkla."
+                message: Lf(
+                    "%1$@ açık. Dahili klavye ve trackpad tıklamaları kilitli. Kapatmak için düğmeye veya Hâl ikonuna tıkla.",
+                    "%1$@ is on. Built-in keyboard and trackpad clicks are locked. Click the button or the Hâl icon to stop.",
+                    copy.title
+                )
             )
         }
         return CleaningResult(
             active: true,
-            message: "\(copy.title) açık; ekran kalkanı devrede. Sistem kısayollarının da kilitlenmesi için Ayarlar’dan “Klavye kilidi izni”ni ver."
+            message: Lf(
+                "%1$@ açık; ekran kalkanı devrede. Sistem kısayollarının da kilitlenmesi için Ayarlar’dan “Klavye kilidi izni”ni ver.",
+                "%1$@ is on and the screen shield is up. Allow “Keyboard lock” in Settings to lock system shortcuts too.",
+                copy.title
+            )
         )
     }
 
@@ -691,5 +701,5 @@ private final class CleaningShield {
 }
 
 extension Notification.Name {
-    static let hilalCleaningEnded = Notification.Name("hilal.cleaningEnded")
+    static let halCleaningEnded = Notification.Name("hal.cleaningEnded")
 }

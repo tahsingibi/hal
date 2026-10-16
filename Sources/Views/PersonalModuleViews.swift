@@ -36,15 +36,15 @@ struct FocusModuleView: View {
             HStack(spacing: 7) {
                 Image(systemName: FocusTracker.shared.currentApp == nil ? "pause.circle" : "scope")
                     .foregroundStyle(Color(hex: "7C5CFF"))
-                Text(FocusTracker.shared.currentApp.map { "Şu an \($0) sayılıyor" }
-                    ?? "Şu an odak sayılmıyor")
+                Text(FocusTracker.shared.currentApp.map { Lf("Şu an %1$@ sayılıyor", "Counting %1$@ now", $0) }
+                    ?? L("Şu an odak sayılmıyor", "Not counting focus right now"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                 Spacer()
             }
 
             SevenDayBars(
-                title: "Son 7 gün",
+                title: L("Son 7 gün", "Last 7 days"),
                 values: days.map { $0.seconds },
                 labels: days.map { TimeFormatters.weekdayInitial($0.date) },
                 target: max(goal, days.map(\.seconds).max() ?? 1),
@@ -54,9 +54,9 @@ struct FocusModuleView: View {
             let weekly = days.reduce(0) { $0 + $1.seconds }
             let best = days.max { $0.seconds < $1.seconds }
             HStack {
-                metric("Bu hafta", TimeFormatters.duration(weekly))
+                metric(L("Bu hafta", "This week"), TimeFormatters.duration(weekly))
                 Spacer()
-                metric("En iyi gün", best.map {
+                metric(L("En iyi gün", "Best day"), best.map {
                     "\(TimeFormatters.weekdayInitial($0.date)) · \(TimeFormatters.duration($0.seconds))"
                 } ?? "—")
             }
@@ -88,42 +88,38 @@ struct WeeklyInsightsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Son yedi gün")
+            Text(L("Son yedi gün", "Last seven days"))
                 .font(.system(size: 15, weight: .semibold))
 
             if store.settings.isModuleEnabled(.focus), store.settings.focusTracking {
                 insightRow(
-                    icon: "scope", title: "Derin çalışma",
+                    icon: "scope", title: L("Derin çalışma", "Deep work"),
                     value: TimeFormatters.duration(dates.reduce(0) { $0 + DailyLog.shared.value(Metric.focusSeconds, on: $1) }),
-                    detail: "günlük ortalama \(TimeFormatters.duration(focusAverage))", tint: "7C5CFF"
+                    detail: Lf("günlük ortalama %1$@", "daily average %1$@", TimeFormatters.duration(focusAverage)), tint: "7C5CFF"
                 )
             }
 
             if store.settings.isModuleEnabled(.fitness), store.settings.trackWorkout {
                 let count = dates.filter { DailyLog.shared.isSet(Metric.workoutDone, on: $0) }.count
-                insightRow(icon: "figure.strengthtraining.traditional", title: "Antrenman",
-                           value: "\(count) gün", detail: store.workoutStreak > 1 ? "\(store.workoutStreak) antrenman seri" : nil,
+                insightRow(icon: "figure.strengthtraining.traditional", title: L("Antrenman", "Workout"),
+                           value: Lf("%1$d gün", "%1$d days", count),
+                           detail: store.workoutStreak > 1 ? Lf("%1$d antrenman seri", "%1$d-workout streak", store.workoutStreak) : nil,
                            tint: "E8A04A")
-            }
-
-            if store.settings.isModuleEnabled(.prayer), store.settings.trackQuran {
-                let pages = dates.reduce(0) { $0 + DailyLog.shared.value(Metric.quranPages, on: $1) }
-                insightRow(icon: "book", title: "Kur’an", value: "\(Int(pages)) sayfa",
-                           detail: store.quranStreak > 1 ? "\(store.quranStreak) gün seri" : nil, tint: "5BC48A")
             }
 
             if store.settings.isModuleEnabled(.prayer), store.settings.trackPrayers, let prayerDay = store.prayers {
                 let metrics = prayerDay.times.filter { !$0.isSunnah }.map { Metric.prayer($0.id) }
                 let complete = dates.filter { date in metrics.allSatisfy { DailyLog.shared.isSet($0, on: date) } }.count
-                insightRow(icon: "moon.stars", title: "Beş vakit", value: "\(complete) gün",
-                           detail: store.prayerStreak > 1 ? "\(store.prayerStreak) gün seri" : nil, tint: "5BC48A")
+                insightRow(icon: "moon.stars", title: L("Beş vakit", "Five prayers"), value: Lf("%1$d gün", "%1$d days", complete),
+                           detail: store.prayerStreak > 1 ? Lf("%1$d gün seri", "%1$d-day streak", store.prayerStreak) : nil, tint: "5BC48A")
             }
 
             if store.settings.isModuleEnabled(.fitness), store.settings.trackIntake {
                 let waterDays = dates.filter { DailyLog.shared.value(Metric.waterML, on: $0) >= store.settings.waterGoalML }.count
                 let proteinDays = dates.filter { DailyLog.shared.value(Metric.proteinG, on: $0) >= store.settings.proteinGoalG }.count
-                insightRow(icon: "fork.knife", title: "Beslenme hedefi", value: "Su \(waterDays)/7",
-                           detail: "Protein \(proteinDays)/7", tint: "4AA8E8")
+                insightRow(icon: "fork.knife", title: L("Beslenme hedefi", "Nutrition goal"),
+                           value: Lf("Su %1$d/7", "Water %1$d/7", waterDays),
+                           detail: Lf("Protein %1$d/7", "Protein %1$d/7", proteinDays), tint: "4AA8E8")
             }
         }
     }
@@ -145,7 +141,7 @@ struct WeeklyInsightsView: View {
     }
 }
 
-/// Bilgisayara geçilmeyen günlerin namaz, ilaç/takviye, dua ve antrenman işaretleri.
+/// Bilgisayara geçilmeyen günlerin namaz, ilaç/takviye ve antrenman işaretleri.
 /// Kendi verisi yok; seçilen güne mevcut günlük kaydı yazar.
 struct DayCloseView: View {
     @EnvironmentObject private var store: AppStore
@@ -159,12 +155,17 @@ struct DayCloseView: View {
         VStack(alignment: .leading, spacing: 12) {
             dateChips(dates)
             if sections.isEmpty {
-                Text("İşaretlenecek bir şey yok. Namaz, ilaç/takviye veya dua takibini Ayarlar’dan aç.")
+                Text(L("İşaretlenecek bir şey yok. Namaz veya ilaç/takviye takibini Ayarlar’dan aç.",
+                       "Nothing to mark. Turn on prayer or meds & supplements tracking in Settings."))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("Dışarıdayken kıldığın namazı, aldığın ilaç veya takviyeyi burada işaretle. Son \(DayClose.lookbackDays) gün.")
+                Text(Lf(
+                    "Dışarıdayken kıldığın namazı, aldığın ilaç veya takviyeyi burada işaretle. Son %1$d gün.",
+                    "Mark prayers you prayed and meds or supplements you took while away. Last %1$d days.",
+                    DayClose.lookbackDays
+                ))
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -217,7 +218,9 @@ struct DayCloseView: View {
                     .font(.system(size: 11, weight: .semibold))
                 Spacer(minLength: 6)
                 if remaining > 0 {
-                    Button(remaining == 1 ? "Kalanı işaretle" : "Kalanları işaretle") {
+                    Button(remaining == 1
+                           ? L("Kalanı işaretle", "Mark remaining")
+                           : L("Kalanları işaretle", "Mark remaining")) {
                         store.markDayCloseRemaining(section, on: date)
                     }
                     .font(.system(size: 10, weight: .medium))
@@ -258,7 +261,7 @@ struct DayCloseView: View {
                 }
                 Spacer(minLength: 0)
                 if !item.due, !done {
-                    Text("bekliyor")
+                    Text(L("bekliyor", "waiting"))
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                 }
@@ -277,29 +280,32 @@ struct HealthOverviewView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if !store.settings.trackWorkout && !store.settings.trackMedication && !store.settings.trackIntake {
-                Text("Antrenman, ilaç/takviye veya beslenme takibini Ayarlar > Sağlık’tan aç.")
+                Text(L("Antrenman, ilaç/takviye veya beslenme takibini Ayarlar > Sağlık’tan aç.",
+                       "Turn on workout, meds & supplements, or nutrition tracking in Settings > Health."))
                     .font(.system(size: 12)).foregroundStyle(.secondary)
             }
             if store.settings.trackWorkout {
                 let plan = Workout.plan(store.settings.workoutPlan, on: store.now)
                 let rest = Workout.isRestDay(plan)
-                statusRow("figure.strengthtraining.traditional", "Antrenman", rest ? "Dinlenme" : plan,
-                          DailyLog.shared.isSet(Metric.workoutDone, on: store.now) ? "tamamlandı" : nil, "E8A04A")
+                statusRow("figure.strengthtraining.traditional", L("Antrenman", "Workout"),
+                          rest ? L("Dinlenme", "Rest") : plan,
+                          DailyLog.shared.isSet(Metric.workoutDone, on: store.now) ? L("tamamlandı", "done") : nil, "E8A04A")
             }
             if store.settings.trackMedication, !store.todayDoses.isEmpty {
                 let taken = store.todayDoses.filter { store.isDoseTaken($0) }.count
-                statusRow("pills", "İlaç & Takviye", "\(taken)/\(store.todayDoses.count) doz", nil, "5BC48A")
+                statusRow("pills", L("İlaç & Takviye", "Meds & supplements"),
+                          Lf("%1$d/%2$d doz", "%1$d/%2$d doses", taken, store.todayDoses.count), nil, "5BC48A")
             }
             if store.settings.trackIntake {
-                statusRow("drop", "Su", liters(DailyLog.shared.value(Metric.waterML, on: store.now)),
-                          "hedef \(liters(store.settings.waterGoalML))", "4AA8E8")
+                statusRow("drop", L("Su", "Water"), liters(DailyLog.shared.value(Metric.waterML, on: store.now)),
+                          Lf("hedef %1$@", "goal %1$@", liters(store.settings.waterGoalML)), "4AA8E8")
                 statusRow("fork.knife", "Protein", "\(Int(DailyLog.shared.value(Metric.proteinG, on: store.now))) g",
-                          "hedef \(Int(store.settings.proteinGoalG)) g", "E8A04A")
+                          Lf("hedef %1$d g", "goal %1$d g", Int(store.settings.proteinGoalG)), "E8A04A")
             }
         }
     }
 
-    private func liters(_ ml: Double) -> String { String(format: "%.1f L", ml / 1000) }
+    private func liters(_ ml: Double) -> String { String(format: "%.1f L", locale: Language.locale, ml / 1000) }
 
     private func statusRow(_ icon: String, _ title: String, _ value: String, _ detail: String?, _ tint: String) -> some View {
         HStack(spacing: 9) {
@@ -318,7 +324,7 @@ struct NutritionView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            nutrient("Su", metric: Metric.waterML, goal: store.settings.waterGoalML,
+            nutrient(L("Su", "Water"), metric: Metric.waterML, goal: store.settings.waterGoalML,
                      unit: "ml", step: store.settings.waterStepML, tint: "4AA8E8")
             nutrient("Protein", metric: Metric.proteinG, goal: store.settings.proteinGoalG,
                      unit: "g", step: store.settings.proteinStepG, tint: "E8A04A")
@@ -388,7 +394,7 @@ struct SevenDayBars: View {
 struct DownloaderUtilityView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Video indir").font(.system(size: 18, weight: .semibold))
+            Text(L("Video indir", "Download video")).font(.system(size: 18, weight: .semibold))
             DownloaderForm(showsFolder: true)
             Spacer(minLength: 0)
         }
@@ -406,32 +412,36 @@ struct DownloaderForm: View {
     var body: some View {
         let tools = DownloadService.tools()
         if !tools.ready {
-            Text("\(tools.missing.joined(separator: " ve ")) bulunamadı.")
+            Text(Lf("%1$@ bulunamadı.", "%1$@ not found.", tools.missing.joined(separator: L(" ve ", " and "))))
             Text("brew install \(tools.missing.joined(separator: " "))")
                 .font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
         } else {
             HStack {
-                TextField("Video bağlantısı", text: $link).onSubmit(start)
+                TextField(L("Video bağlantısı", "Video link"), text: $link).onSubmit(start)
                 Button { link = NSPasteboard.general.string(forType: .string) ?? "" } label: {
                     Image(systemName: "doc.on.clipboard")
                 }
-                .help("Panodan yapıştır")
+                .help(L("Panodan yapıştır", "Paste from clipboard"))
             }
-            Picker("Biçim", selection: $store.settings.downloadFormat) {
-                ForEach(DownloadService.Format.allCases) { Text($0.title).tag($0) }
+            Picker(L("Biçim", "Format"), selection: $store.settings.downloadFormat) {
+                ForEach(DownloadService.Format.allCases) { format in
+                    Text(format == .mp3
+                         ? L("MP3 · yüksek kalite ses", "MP3 · high quality audio")
+                         : L("MP4 · en iyi video", "MP4 · best video")).tag(format)
+                }
             }.pickerStyle(.segmented)
             if showsFolder {
                 HStack {
                     Label(store.settings.downloadDestination.path, systemImage: "folder")
                         .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                     Spacer()
-                    Button("Değiştir", action: chooseFolder)
+                    Button(L("Değiştir", "Change"), action: chooseFolder)
                 }
             }
             stateView
             if !service.isRunning {
                 Button(action: start) {
-                    Label("İndir", systemImage: "arrow.down.circle").frame(maxWidth: .infinity)
+                    Label(L("İndir", "Download"), systemImage: "arrow.down.circle").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(link.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -445,13 +455,13 @@ struct DownloaderForm: View {
             VStack(alignment: .leading) {
                 ProgressView(value: progress)
                 Text(note).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1)
-                Button("İptal") { service.cancel() }
+                Button(L("İptal", "Cancel")) { service.cancel() }
             }
         case .updating(let note): ProgressView(note)
         case .finished(let path):
-            Button("Tamamlandı · Finder’da göster") { service.revealInFinder(path) }
+            Button(L("Tamamlandı · Finder’da göster", "Done · Show in Finder")) { service.revealInFinder(path) }
         case .failed(let reason): Text(reason).foregroundStyle(.red)
-        case .cancelled: Text("İptal edildi.").foregroundStyle(.secondary)
+        case .cancelled: Text(L("İptal edildi.", "Cancelled.")).foregroundStyle(.secondary)
         case .idle: EmptyView()
         }
     }

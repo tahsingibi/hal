@@ -16,8 +16,8 @@ final class DownloadService: ObservableObject {
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .mp3: return "MP3 · yüksek kalite ses"
-            case .mp4: return "MP4 · en iyi video"
+            case .mp3: return L("MP3 · yüksek kalite ses", "MP3 · high quality audio")
+            case .mp4: return L("MP4 · en iyi video", "MP4 · best video")
             }
         }
         var shortTitle: String { rawValue.uppercased() }
@@ -123,31 +123,33 @@ final class DownloadService: ObservableObject {
     /// eski sürümle denemek, hiç denememekten iyidir.
     @discardableResult
     func updateTool() async -> String {
-        guard let ytdlp = Self.tools().ytdlp else { return "yt-dlp yok" }
+        guard let ytdlp = Self.tools().ytdlp else { return L("yt-dlp yok", "yt-dlp is missing") }
         let strategy = Self.updateStrategy(for: ytdlp)
-        state = .updating("\(strategy.describe) çalışıyor…")
+        state = .updating("\(strategy.describe) \(L("çalışıyor…", "running…"))")
 
         let command: (String, [String])
         switch strategy {
         case .selfUpdate(let path): command = (path, ["-U"])
         case .homebrew:
-            guard let brew = ProcessRunner.which("brew") else { return "brew bulunamadı" }
+            guard let brew = ProcessRunner.which("brew") else { return L("brew bulunamadı", "brew not found") }
             command = (brew, ["upgrade", "yt-dlp"])
         case .pipx:
-            guard let pipx = ProcessRunner.which("pipx") else { return "pipx bulunamadı" }
+            guard let pipx = ProcessRunner.which("pipx") else { return L("pipx bulunamadı", "pipx not found") }
             command = (pipx, ["upgrade", "yt-dlp"])
         case .pip:
-            guard let python = ProcessRunner.which("python3") else { return "python3 bulunamadı" }
+            guard let python = ProcessRunner.which("python3") else { return L("python3 bulunamadı", "python3 not found") }
             command = (python, ["-m", "pip", "install", "-U", "yt-dlp"])
         }
 
         let result: String = await Task.detached(priority: .utility) {
             guard let output = try? ProcessRunner.output(
                 command.0, arguments: command.1, timeout: 180, environment: ProcessRunner.enrichedEnvironment()
-            ) else { return "güncelleme zaman aşımına uğradı" }
+            ) else { return L("güncelleme zaman aşımına uğradı", "Update timed out") }
             let text = String(data: output.data, encoding: .utf8) ?? ""
             let line = text.split(separator: "\n").last.map(String.init) ?? ""
-            return output.status == 0 ? (line.isEmpty ? "güncel" : line) : "güncelleme atlandı"
+            return output.status == 0
+                ? (line.isEmpty ? L("güncel", "up to date") : line)
+                : L("güncelleme atlandı", "Update skipped")
         }.value
 
         markChecked()
@@ -190,21 +192,21 @@ final class DownloadService: ObservableObject {
         if case .running = state { return }
         let trimmed = link.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            state = .failed("Bağlantı boş olamaz.")
+            state = .failed(L("Bağlantı boş olamaz.", "Link cannot be empty."))
             return
         }
         guard let url = URL(string: trimmed), url.scheme?.hasPrefix("http") == true else {
-            state = .failed("Geçerli bir bağlantı değil.")
+            state = .failed(L("Geçerli bir bağlantı değil.", "Not a valid link."))
             return
         }
         let tools = Self.tools()
         guard let ytdlp = tools.ytdlp else {
-            state = .failed("yt-dlp bulunamadı.")
+            state = .failed(L("yt-dlp bulunamadı.", "yt-dlp not found."))
             return
         }
 
         log = []
-        state = .running(progress: 0, line: "Başlatılıyor…")
+        state = .running(progress: 0, line: L("Başlatılıyor…", "Starting…"))
 
         let template = destination.appendingPathComponent("%(title)s.%(ext)s").path
         var arguments: [String] = ["--newline", "--no-check-certificates", "-o", template]
@@ -302,7 +304,8 @@ final class DownloadService: ObservableObject {
             state = .finished(path: destination.path)
             return
         }
-        let reason = log.last(where: { $0.lowercased().contains("error") }) ?? "yt-dlp \(status) koduyla çıktı"
+        let reason = log.last(where: { $0.lowercased().contains("error") })
+            ?? Lf("yt-dlp %1$d koduyla çıktı", "yt-dlp exited with code %1$d", status)
 
         // Çıkarıcı bozulmuşsa bu neredeyse her zaman eski yt-dlp demektir:
         // zorla güncelle ve bir kez daha dene. İkinci denemede yine olmazsa bırak.
@@ -310,7 +313,11 @@ final class DownloadService: ObservableObject {
             pendingRetry = nil
             Task {
                 let note = await updateTool()
-                lastUpdateNote = "Güncellendi (\(note)), tekrar deneniyor…"
+                lastUpdateNote = Lf(
+                    "Güncellendi (%1$@), tekrar deneniyor…",
+                    "Updated (%1$@), trying again…",
+                    note
+                )
                 start(link: retry.link, format: retry.format, destination: retry.destination)
             }
             return

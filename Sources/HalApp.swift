@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 @main
-struct HilalApp: App {
+struct HalApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
 
     var body: some Scene {
@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         store.applyPersistedModes()
         statusBar = StatusBarController(store: store)
+        UpdateController.start()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

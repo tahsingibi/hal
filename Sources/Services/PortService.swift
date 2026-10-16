@@ -73,20 +73,25 @@ final class PortService: ObservableObject {
         let siblings = ports.filter { $0.pid == port.pid }.map(\.port).sorted()
         let closing: String
         if siblings.count <= 1 {
-            closing = "\(port.port) portu boşalır."
+            closing = Lf("%1$d portu boşalır.", "%1$d port will close.", port.port)
         } else {
             let list = siblings.map(String.init).joined(separator: ", ")
-            closing = "\(list) portları boşalır."
+            closing = Lf("%1$@ portları boşalır.", "%1$@ ports will close.", list)
         }
         if force {
-            return "Az önce kapanmadı. Zorla durdurmak PID \(port.pid) sürecini anında keser. \(closing)"
+            return Lf(
+                "Az önce kapanmadı. Zorla durdurmak PID %1$d sürecini anında keser. %2$@",
+                "It did not quit just now. Force stop immediately kills PID %1$d. %2$@",
+                port.pid,
+                closing
+            )
         }
-        return "PID \(port.pid) kapanır. \(closing)"
+        return Lf("PID %1$d kapanır. %2$@", "PID %1$d will quit. %2$@", port.pid, closing)
     }
 
     func stop(_ port: PortScan.Listener) {
         guard port.canStop, port.pid > 1, port.pid != Int32(ProcessInfo.processInfo.processIdentifier) else {
-            statusNote = "Bu süreç durdurulamaz."
+            statusNote = L("Bu süreç durdurulamaz.", "This process cannot be stopped.")
             statusIsError = true
             return
         }
@@ -95,13 +100,15 @@ final class PortService: ObservableObject {
         if kill(port.pid, signal) != 0 {
             let err = errno
             if err != ESRCH {
-                statusNote = err == EPERM ? "Bu süreci durdurma iznin yok." : "Durdurulamadı."
+                statusNote = err == EPERM
+                    ? L("Bu süreci durdurma iznin yok.", "You do not have permission to stop this process.")
+                    : L("Durdurulamadı.", "Could not stop it.")
                 statusIsError = true
                 return
             }
         }
         stopping.insert(port.pid)
-        statusNote = "Durduruluyor…"
+        statusNote = L("Durduruluyor…", "Stopping…")
         statusIsError = false
         let pid = port.pid
         let portNumber = port.port
@@ -114,12 +121,12 @@ final class PortService: ObservableObject {
             if stillUp {
                 stubborn.insert(pid)
                 statusNote = force
-                    ? "\(name) kapanmadı."
-                    : "\(name) kapanmadı. Zorla durdurabilirsin."
+                    ? Lf("%1$@ kapanmadı.", "%1$@ did not quit.", name)
+                    : Lf("%1$@ kapanmadı. Zorla durdurabilirsin.", "%1$@ did not quit. You can force stop it.", name)
                 statusIsError = true
             } else {
                 stubborn.remove(pid)
-                statusNote = "\(name) durduruldu."
+                statusNote = Lf("%1$@ durduruldu.", "%1$@ stopped.", name)
                 statusIsError = false
             }
         }
@@ -149,7 +156,7 @@ private enum PortSurvey {
 
     static func listen(myUID: uid_t, selfPID: Int32) -> Result {
         guard FileManager.default.isExecutableFile(atPath: "/usr/sbin/lsof") else {
-            return Result(ports: [], error: "lsof bulunamadı.")
+            return Result(ports: [], error: L("lsof bulunamadı.", "lsof not found."))
         }
         let listed: (status: Int32, data: Data)
         do {
@@ -159,14 +166,14 @@ private enum PortSurvey {
                 timeout: 8
             )
         } catch {
-            return Result(ports: [], error: "Portlar okunamadı.")
+            return Result(ports: [], error: L("Portlar okunamadı.", "Could not read ports."))
         }
         let text = String(data: listed.data, encoding: .utf8) ?? ""
         if text.isEmpty {
             if listed.status == 0 || listed.status == 1 {
                 return Result(ports: [], error: nil)
             }
-            return Result(ports: [], error: "Portlar okunamadı.")
+            return Result(ports: [], error: L("Portlar okunamadı.", "Could not read ports."))
         }
         let rough = PortScan.listeners(from: text, myUID: myUID, selfPID: selfPID)
         let commands = commandLines(pids: Array(Set(rough.map(\.pid))))

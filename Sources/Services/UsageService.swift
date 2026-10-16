@@ -102,8 +102,13 @@ struct UsageService {
                         name: name,
                         kind: kind,
                         accentHex: accentHex ?? kind.accentHex,
-                        status: .error("Zaman aşımı"),
-                        message: "\(name) kotası \(Int(timeout)) saniyede yanıt vermedi.",
+                        status: .error(L("Zaman aşımı", "Timed out")),
+                        message: Lf(
+                            "%1$@ kotası %2$d saniyede yanıt vermedi.",
+                            "%1$@ quota did not respond in %2$d seconds.",
+                            name,
+                            Int(timeout)
+                        ),
                         windows: []
                     )
                 )
@@ -130,7 +135,10 @@ struct UsageService {
             guard var token = try ClaudeAuth.accessToken() else {
                 return claudeGroup(
                     status: .missingAuth,
-                    message: "Claude Code oturumu bulunamadı. Terminalde claude ile tekrar giriş yap."
+                    message: L(
+                        "Claude Code oturumu bulunamadı. Terminalde claude ile tekrar giriş yap.",
+                        "No Claude Code session. Sign in again with claude in Terminal."
+                    )
                 )
             }
             if ClaudeAuth.needsRefresh() {
@@ -139,9 +147,12 @@ struct UsageService {
                 }
             }
             guard let url = URL(string: "https://api.anthropic.com/api/oauth/usage") else {
-                return claudeGroup(status: .error("Adres yok"), message: "Adres yok")
+                return claudeGroup(
+                    status: .error(L("Adres yok", "No address")),
+                    message: L("Adres yok", "No address")
+                )
             }
-            var lastError = "Kota alınamadı"
+            var lastError = L("Kota alınamadı", "Could not load quota")
             for attempt in 0..<2 {
                 do {
                     let (data, response) = try await NetworkClient.get(url, headers: [
@@ -155,20 +166,23 @@ struct UsageService {
                             token = refreshed
                             continue
                         }
-                        lastError = "Claude oturumu süresi dolmuş. Terminalde claude /login ile tekrar giriş yap."
+                        lastError = L(
+                            "Claude oturumu süresi dolmuş. Terminalde claude /login ile tekrar giriş yap.",
+                            "Claude session expired. Run claude /login in Terminal."
+                        )
                         break
                     }
                     guard (200..<300).contains(response.statusCode) else {
-                        lastError = "Claude HTTP \(response.statusCode)"
+                        lastError = Lf("Claude HTTP %1$d", "Claude HTTP %1$d", response.statusCode)
                         break
                     }
                     guard let object = JSONValue.object(try? NetworkClient.json(data)) else {
-                        lastError = "Claude yanıtı JSON değil"
+                        lastError = L("Claude yanıtı JSON değil", "Claude response is not JSON")
                         break
                     }
                     let windows = claudeWindows(object)
                     if windows.isEmpty {
-                        lastError = "Claude kota biçimi okunamadı"
+                        lastError = L("Claude kota biçimi okunamadı", "Could not read the Claude quota format")
                         break
                     }
                     return claudeGroup(status: .ready, message: nil, windows: windows)
@@ -209,11 +223,11 @@ struct UsageService {
         // Yedek: adlandırılmış pencere nesneleri.
         if windows.isEmpty {
             let named: [(key: String, title: String)] = [
-                ("five_hour", "Oturum (5 saat)"),
-                ("seven_day", "Haftalık"),
-                ("seven_day_opus", "Haftalık · Opus"),
-                ("seven_day_sonnet", "Haftalık · Sonnet"),
-                ("seven_day_cowork", "Haftalık · Cowork")
+                ("five_hour", L("Oturum (5 saat)", "Session (5 hours)")),
+                ("seven_day", L("Haftalık", "Weekly")),
+                ("seven_day_opus", L("Haftalık · Opus", "Weekly · Opus")),
+                ("seven_day_sonnet", L("Haftalık · Sonnet", "Weekly · Sonnet")),
+                ("seven_day_cowork", L("Haftalık · Cowork", "Weekly · Cowork"))
             ]
             for item in named {
                 guard let node = JSONValue.object(object[item.key]) else { continue }
@@ -242,10 +256,10 @@ struct UsageService {
             windows.append(
                 QuotaWindow(
                     id: "claude-extra",
-                    title: "Ek kullanım",
+                    title: L("Ek kullanım", "Extra usage"),
                     percent: percent,
                     usedText: (used != nil && cap != nil) ? "\(used!.clean) / \(cap!.clean)" : "",
-                    resetText: "Aylık",
+                    resetText: L("Aylık", "Monthly"),
                     detail: JSONValue.string(extra["disabled_reason"])
                 )
             )
@@ -258,7 +272,7 @@ struct UsageService {
             windows.append(
                 QuotaWindow(
                     id: "claude-spend",
-                    title: "Kredi",
+                    title: L("Kredi", "Credits"),
                     percent: percent,
                     usedText: moneyText(spend["used"], limit: spend["limit"]),
                     resetText: "",
@@ -272,11 +286,11 @@ struct UsageService {
 
     private static func claudeTitle(_ kind: String) -> String {
         switch kind.lowercased() {
-        case "session", "five_hour": return "Oturum (5 saat)"
-        case "weekly_all", "weekly", "seven_day": return "Haftalık"
-        case "weekly_opus", "seven_day_opus": return "Haftalık · Opus"
-        case "weekly_sonnet", "seven_day_sonnet": return "Haftalık · Sonnet"
-        case "weekly_cowork", "seven_day_cowork": return "Haftalık · Cowork"
+        case "session", "five_hour": return L("Oturum (5 saat)", "Session (5 hours)")
+        case "weekly_all", "weekly", "seven_day": return L("Haftalık", "Weekly")
+        case "weekly_opus", "seven_day_opus": return L("Haftalık · Opus", "Weekly · Opus")
+        case "weekly_sonnet", "seven_day_sonnet": return L("Haftalık · Sonnet", "Weekly · Sonnet")
+        case "weekly_cowork", "seven_day_cowork": return L("Haftalık · Cowork", "Weekly · Cowork")
         default:
             return kind.replacingOccurrences(of: "_", with: " ").capitalized
         }
@@ -285,8 +299,8 @@ struct UsageService {
     private static func claudeSeverity(_ raw: String?) -> String? {
         switch (raw ?? "").lowercased() {
         case "", "normal": return nil
-        case "warning": return "Limite yaklaşıldı"
-        case "critical", "exceeded": return "Limit doldu"
+        case "warning": return L("Limite yaklaşıldı", "Near the limit")
+        case "critical", "exceeded": return L("Limit doldu", "Limit reached")
         default: return raw
         }
     }
@@ -344,7 +358,10 @@ struct UsageService {
         guard var auth = CodexAuth.load() else {
             return codexGroup(
                 status: .missingAuth,
-                message: "Codex oturumu bulunamadı (~/.codex/auth.json)"
+                message: L(
+                    "Codex oturumu bulunamadı (~/.codex/auth.json)",
+                    "No Codex session (~/.codex/auth.json)"
+                )
             )
         }
         if CodexAuth.needsRefresh(auth.accessToken) {
@@ -353,9 +370,12 @@ struct UsageService {
             }
         }
         guard let url = URL(string: "https://chatgpt.com/backend-api/wham/usage") else {
-            return codexGroup(status: .error("Adres yok"), message: "Adres yok")
+            return codexGroup(
+                status: .error(L("Adres yok", "No address")),
+                message: L("Adres yok", "No address")
+            )
         }
-        var lastError = "Kota alınamadı"
+        var lastError = L("Kota alınamadı", "Could not load quota")
         for attempt in 0..<2 {
             var headers = [
                 "Authorization": "Bearer \(auth.accessToken)",
@@ -371,21 +391,27 @@ struct UsageService {
                         auth = refreshed
                         continue
                     }
-                    lastError = "Codex oturumu süresi dolmuş. Terminalde codex login çalıştır."
+                    lastError = L(
+                        "Codex oturumu süresi dolmuş. Terminalde codex login çalıştır.",
+                        "Codex session expired. Run codex login in Terminal."
+                    )
                     break
                 }
                 guard (200..<300).contains(response.statusCode) else {
-                    lastError = "Codex HTTP \(response.statusCode)"
+                    lastError = Lf("Codex HTTP %1$d", "Codex HTTP %1$d", response.statusCode)
                     break
                 }
                 guard let object = JSONValue.object(try? NetworkClient.json(data)) else {
                     // 200 ama HTML dönerse oturum Cloudflare tarafından reddedilmiştir.
-                    lastError = "Codex yanıtı JSON değil, oturum geçersiz olabilir"
+                    lastError = L(
+                        "Codex yanıtı JSON değil, oturum geçersiz olabilir",
+                        "Codex response is not JSON; session may be invalid"
+                    )
                     break
                 }
                 let windows = codexWindows(object)
                 if windows.isEmpty {
-                    lastError = "Codex kota biçimi okunamadı"
+                    lastError = L("Codex kota biçimi okunamadı", "Could not read the Codex quota format")
                     break
                 }
                 return codexGroup(status: .ready, message: nil, windows: windows)
@@ -409,7 +435,7 @@ struct UsageService {
         for item in JSONValue.array(object["additional_rate_limits"]) ?? [] {
             guard let entry = JSONValue.object(item),
                   let rateLimit = JSONValue.object(entry["rate_limit"]) else { continue }
-            let name = JSONValue.string(entry["limit_name"]) ?? "ek"
+            let name = JSONValue.string(entry["limit_name"]) ?? L("ek", "extra")
             windows.append(
                 contentsOf: codexRateLimit(rateLimit, prefix: "codex-\(name)", label: codexLabel(name), detail: nil)
             )
@@ -422,9 +448,11 @@ struct UsageService {
             windows.append(
                 QuotaWindow(
                     id: "codex-credits",
-                    title: "Kredi",
+                    title: L("Kredi", "Credits"),
                     percent: 0,
-                    usedText: unlimited ? "Sınırsız" : "\(balance.clean) kredi",
+                    usedText: unlimited
+                        ? L("Sınırsız", "Unlimited")
+                        : Lf("%1$@ kredi", "%1$@ credits", balance.clean),
                     resetText: "",
                     detail: nil,
                     hasLimit: false
@@ -474,14 +502,18 @@ struct UsageService {
 
     private static func codexWindowTitle(_ seconds: Double?, fallback: String) -> String {
         guard let seconds, seconds > 0 else {
-            return fallback == "primary_window" ? "Oturum" : "Haftalık"
+            return fallback == "primary_window"
+                ? L("Oturum", "Session")
+                : L("Haftalık", "Weekly")
         }
         let hours = Int((seconds / 3600).rounded())
         if hours >= 24 {
             let days = Int((seconds / 86_400).rounded())
-            return days == 7 ? "Haftalık" : "\(days) günlük"
+            return days == 7
+                ? L("Haftalık", "Weekly")
+                : Lf("%1$d günlük", "%1$d-day", days)
         }
-        return "Oturum (\(hours) saat)"
+        return Lf("Oturum (%1$d saat)", "Session (%1$d hours)", hours)
     }
 
     private static func codexLabel(_ raw: String) -> String {
@@ -500,7 +532,10 @@ struct UsageService {
             let credential = try await GrokAuth.credential()
             let windows = try await grokCredits(credential)
             if windows.isEmpty {
-                throw HilalError.message("Grok kota yanıtında kullanım yüzdesi yok.")
+                throw HalError.message(L(
+                    "Grok kota yanıtında kullanım yüzdesi yok.",
+                    "Grok quota response has no usage percent."
+                ))
             }
             return grokGroup(status: .ready, message: nil, windows: windows)
         } catch let error as GrokAuthError {
@@ -559,7 +594,7 @@ struct UsageService {
             throw GrokUnauthorized()
         }
         guard (200..<300).contains(response.statusCode) else {
-            throw HilalError.message("Grok HTTP \(response.statusCode)")
+            throw HalError.message(Lf("Grok HTTP %1$d", "Grok HTTP %1$d", response.statusCode))
         }
         let rows = GrokCredits.rows(from: try NetworkClient.json(data))
         return rows.map { row in
@@ -594,8 +629,12 @@ struct UsageService {
                         id: provider.id.uuidString + "-manual",
                         title: provider.name,
                         percent: percent,
-                        usedText: "\(Int((percent * 100).rounded()))% kullanıldı",
-                        resetText: "Manuel",
+                        usedText: Lf(
+                            "%1$d%% kullanıldı",
+                            "%1$d%% used",
+                            Int((percent * 100).rounded())
+                        ),
+                        resetText: L("Manuel", "Manual"),
                         detail: "\(provider.used.clean) / \(provider.limit.clean)"
                     )
                 ]
@@ -611,7 +650,7 @@ struct UsageService {
                     name: provider.name,
                     kind: .custom,
                     accentHex: provider.accentHex,
-                    status: windows.isEmpty ? .error("Komut çıktısı okunamadı") : .ready,
+                    status: windows.isEmpty ? .error(L("Komut çıktısı okunamadı", "Could not read command output")) : .ready,
                     message: windows.isEmpty ? output.prefix(160).description : nil,
                     windows: windows
                 )
@@ -633,8 +672,8 @@ struct UsageService {
                     name: provider.name,
                     kind: .custom,
                     accentHex: provider.accentHex,
-                    status: .error("Geçersiz URL"),
-                    message: "Geçersiz URL",
+                    status: .error(L("Geçersiz URL", "Invalid URL")),
+                    message: L("Geçersiz URL", "Invalid URL"),
                     windows: []
                 )
             }
@@ -646,7 +685,7 @@ struct UsageService {
                 }
                 let (data, response) = try await NetworkClient.get(url, headers: headers)
                 guard (200..<300).contains(response.statusCode) else {
-                    throw HilalError.message("HTTP \(response.statusCode)")
+                    throw HalError.message(Lf("HTTP %1$d", "HTTP %1$d", response.statusCode))
                 }
                 let json = try NetworkClient.json(data)
                 let windows = QuotaParser.windows(from: json, fallbackTitle: provider.name)
@@ -655,7 +694,7 @@ struct UsageService {
                     name: provider.name,
                     kind: .custom,
                     accentHex: provider.accentHex,
-                    status: windows.isEmpty ? .error("JSON okunamadı") : .ready,
+                    status: windows.isEmpty ? .error(L("JSON okunamadı", "Could not read JSON")) : .ready,
                     message: nil,
                     windows: windows
                 )
@@ -804,17 +843,20 @@ enum ClaudeAuth {
 
     static func openLogin() -> String? {
         guard let binary = ProcessRunner.which("claude") else {
-            return "claude komutu bulunamadı. Claude Code’u yükle, sonra Terminal’de claude /login çalıştır."
+            return L(
+                "claude komutu bulunamadı. Claude Code’u yükle, sonra Terminal’de claude /login çalıştır.",
+                "claude command not found. Install Claude Code, then run claude /login in Terminal."
+            )
         }
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("hilal-claude-login.command")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("hal-claude-login.command")
         let body = """
         #!/bin/zsh
-        echo "Claude Code girişi"
-        echo "Tarayıcı açılırsa login ol. Bitince bu pencereyi kapat, Hâl’de Yenile’ye bas."
+        echo "\(L("Claude Code girişi", "Claude Code sign-in"))"
+        echo "\(L("Tarayıcı açılırsa login ol. Bitince bu pencereyi kapat, Hâl’de Yenile’ye bas.", "If a browser opens, sign in. When done, close this window and press Refresh in Hâl."))"
         echo
         \(shellEscape(binary)) /login
         echo
-        echo "Giriş bittiyse bu pencereyi kapat, Hâl’de Yenile’ye bas."
+        echo "\(L("Giriş bittiyse bu pencereyi kapat, Hâl’de Yenile’ye bas.", "If sign-in finished, close this window and press Refresh in Hâl."))"
         echo
         exec /bin/zsh
         """
@@ -998,11 +1040,11 @@ enum QuotaParser {
             ?? object
         var windows: [QuotaWindow] = []
         let mapping: [(keys: [String], title: String)] = [
-            (["five_hour", "fiveHour", "session", "current_session", "primary_window", "primaryWindow"], "Oturum"),
-            (["seven_day", "sevenDay", "weekly", "all_models", "secondary_window", "secondaryWindow", "week"], "Haftalık"),
+            (["five_hour", "fiveHour", "session", "current_session", "primary_window", "primaryWindow"], L("Oturum", "Session")),
+            (["seven_day", "sevenDay", "weekly", "all_models", "secondary_window", "secondaryWindow", "week"], L("Haftalık", "Weekly")),
             (["seven_day_sonnet", "sonnet"], "Sonnet"),
             (["seven_day_opus", "opus"], "Opus"),
-            (["extra", "extra_usage", "overage", "extraUsage"], "Ek kullanım")
+            (["extra", "extra_usage", "overage", "extraUsage"], L("Ek kullanım", "Extra usage"))
         ]
         for item in mapping {
             if let value = JSONValue.lookup(nested, keys: item.keys) {
@@ -1013,7 +1055,7 @@ enum QuotaParser {
             windows.append(
                 QuotaWindow(
                     id: "main",
-                    title: "Kullanım",
+                    title: L("Kullanım", "Usage"),
                     percent: percent,
                     usedText: "",
                     resetText: TimeFormatters.resetPhrase(JSONValue.date(JSONValue.lookup(nested, keys: ["resets_at", "reset_at", "resetsAt"]))),
@@ -1098,11 +1140,11 @@ enum QuotaParser {
 
     private static func humanize(_ key: String, fallback: String) -> String {
         let k = key.lowercased()
-        if k.contains("five") || k.contains("session") { return "Oturum" }
+        if k.contains("five") || k.contains("session") { return L("Oturum", "Session") }
         if k.contains("opus") { return "Opus" }
         if k.contains("sonnet") { return "Sonnet" }
-        if k.contains("seven") || k.contains("week") { return "Haftalık" }
-        if k.contains("extra") { return "Ek kullanım" }
+        if k.contains("seven") || k.contains("week") { return L("Haftalık", "Weekly") }
+        if k.contains("extra") { return L("Ek kullanım", "Extra usage") }
         if fallback.contains(".") { return fallback.split(separator: ".").last.map(String.init) ?? key }
         if !fallback.isEmpty { return fallback.replacingOccurrences(of: "_", with: " ").capitalized }
         return key.replacingOccurrences(of: "_", with: " ").capitalized

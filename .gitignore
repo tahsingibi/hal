@@ -1,8 +1,8 @@
-Hilal.app
 Hal.app
 AppIcon.iconset
 .DS_Store
 .build/
+dist/
 
 # Kökteki geçici hizalama denemeleri
 qtalign

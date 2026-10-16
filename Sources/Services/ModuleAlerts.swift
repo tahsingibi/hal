@@ -19,12 +19,19 @@ enum PrayerAlerts {
                 let fireAt = prayer.time.addingTimeInterval(-offset)
                 guard fireAt > now else { return nil }
                 let clock = TimeFormatters.clock(prayer.time)
+                let name = prayer.localizedName
                 let body = minutesBefore > 0
-                    ? "\(prayer.name) vaktine \(minutesBefore) dakika kaldı. (\(clock))"
-                    : "\(prayer.name) vakti girdi. (\(clock))"
+                    ? Lf(
+                        "%1$@ vaktine %2$d dakika kaldı. (%3$@)",
+                        "%2$d minutes until %1$@. (%3$@)",
+                        name,
+                        minutesBefore,
+                        clock
+                    )
+                    : Lf("%1$@ vakti girdi. (%2$@)", "%1$@ has begun. (%2$@)", name, clock)
                 return Alert(
                     id: "\(dayKey(prayer.time))-\(prayer.id)",
-                    title: prayer.name,
+                    title: name,
                     body: body,
                     fireAt: fireAt
                 )
@@ -90,8 +97,8 @@ enum QuotaAlerts {
                     alerts.append(
                         Alert(
                             id: "reset-\(id)-\(stamp(before.resetsAt))",
-                            title: "\(group.name) kotası sıfırlandı",
-                            body: "\(window.title) yeniden kullanılabilir."
+                            title: Lf("%1$@ kotası sıfırlandı", "%1$@ quota reset", group.name),
+                            body: Lf("%1$@ yeniden kullanılabilir.", "%1$@ is available again.", window.title)
                         )
                     )
                     continue
@@ -104,7 +111,7 @@ enum QuotaAlerts {
                         Alert(
                             id: "threshold-\(id)-\(stamp(window.resetsAt))-\(Int(threshold * 100))",
                             title: "\(group.name) \(percentText)",
-                            body: "\(window.title) eşiği aştı.\(reset)"
+                            body: Lf("%1$@ eşiği aştı.%2$@", "%1$@ crossed the threshold.%2$@", window.title, reset)
                         )
                     )
                 }
@@ -149,7 +156,7 @@ enum DailySummaryAlerts {
         guard !body.isEmpty else { return nil }
         return Alert(
             id: DailyLog.key(now),
-            title: "Bugün",
+            title: L("Bugün", "Today"),
             body: body,
             fireAt: fireAt
         )
@@ -172,15 +179,22 @@ enum DayCloseAlerts {
         }
         let body: String
         if pending == 1 {
-            body = "1 açık işaret var. Düzeltmek için tıkla."
+            body = L("1 açık işaret var. Düzeltmek için tıkla.", "1 open check. Click to fix it.")
         } else if pending > 1 {
-            body = "\(pending) açık işaret var. Düzeltmek için tıkla."
+            body = Lf(
+                "%1$d açık işaret var. Düzeltmek için tıkla.",
+                "%1$d open checks. Click to fix them.",
+                pending
+            )
         } else {
-            body = "Namaz, ilaç ve antrenman işaretlerini gözden geçir."
+            body = L(
+                "Namaz, ilaç ve antrenman işaretlerini gözden geçir.",
+                "Review prayer, medication, and workout checks."
+            )
         }
         return Alert(
             id: DailyLog.key(fireAt),
-            title: "Gün sonu",
+            title: L("Gün sonu", "End of day"),
             body: body,
             fireAt: fireAt,
             target: targetID
@@ -201,8 +215,8 @@ enum RenewalAlerts {
                   atNine > now else { return nil }
             return Alert(
                 id: "\(item.id.uuidString)-\(Int(renewal.timeIntervalSince1970))",
-                title: "\(item.name) yenilenecek",
-                body: "\(item.amountText) · \(daysBefore) gün sonra",
+                title: Lf("%1$@ yenilenecek", "%1$@ will renew", item.name),
+                body: Lf("%1$@ · %2$@", "%1$@ · %2$@", item.amountText, LInDays(daysBefore)),
                 fireAt: atNine
             )
         }
@@ -231,7 +245,7 @@ enum MedicationAlerts {
             return Alert(
                 id: "\(DailyLog.key(now))-\(dose.id)",
                 title: dose.medication.name,
-                body: dose_.isEmpty ? "\(dose.clock) dozu" : "\(dose_) · \(dose.clock)",
+                body: dose_.isEmpty ? Lf("%1$@ dozu", "%1$@ dose", dose.clock) : "\(dose_) · \(dose.clock)",
                 fireAt: fireAt
             )
         }

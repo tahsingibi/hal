@@ -1,6 +1,6 @@
 import Foundation
 
-/// Kaçırılan günlerin namaz, ilaç/takviye, dua ve antrenman işaretleri.
+/// Kaçırılan günlerin namaz, ilaç/takviye ve antrenman işaretleri.
 ///
 /// Yeni bir pano modülü değil: kendi verisi yok, mevcut günlük kayda yazar.
 /// Bilgisayara geçilmeyen günde işaretlenemeyen şeyler burada, son birkaç gün
@@ -9,13 +9,9 @@ import Foundation
 enum DayClose {
     static let lookbackDays = 4
 
-    static let obligatoryPrayers: [(id: String, name: String)] = [
-        ("Fajr", "İmsak"),
-        ("Dhuhr", "Öğle"),
-        ("Asr", "İkindi"),
-        ("Maghrib", "Akşam"),
-        ("Isha", "Yatsı")
-    ]
+    static var obligatoryPrayers: [(id: String, name: String)] {
+        ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"].map { ($0, PrayerCopy.name(id: $0)) }
+    }
 
     struct Item: Identifiable, Equatable, Sendable {
         var title: String

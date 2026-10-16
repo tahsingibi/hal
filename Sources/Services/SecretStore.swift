@@ -71,7 +71,7 @@ enum SecretStore {
 
     // MARK: - Eski anahtar zinciri kayıtları
 
-    private static let legacyService = "dev.sungur.Hilal"
+    private static let legacyService = "dev.sungur.Hal"
     /// Ara sürümde kullanılan toplu kayıt: içinde tüm değerlerin JSON sözlüğü var.
     private static let legacyBlobAccount = "secrets"
     /// İlk sürümlerdeki ayrı kayıtlar: her biri düz metin tek değer.

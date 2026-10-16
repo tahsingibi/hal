@@ -57,7 +57,7 @@ final class CalendarService: ObservableObject {
             .map {
                 CalendarEvent(
                     id: $0.eventIdentifier ?? UUID().uuidString,
-                    title: $0.title ?? "Başlıksız",
+                    title: $0.title ?? L("Başlıksız", "Untitled"),
                     start: $0.startDate,
                     end: $0.endDate,
                     calendarName: $0.calendar?.title ?? ""

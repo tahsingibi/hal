@@ -17,17 +17,17 @@ enum PrayerService {
             URLQueryItem(name: "iso8601", value: "true")
         ]
         guard let url = components?.url else {
-            throw HilalError.message("Namaz vakti adresi oluşturulamadı")
+            throw HalError.message(L("Namaz vakti adresi oluşturulamadı", "Could not build the prayer times address"))
         }
         let (data, response) = try await NetworkClient.get(url)
         guard (200..<300).contains(response.statusCode) else {
-            throw HilalError.message("Namaz vakitleri alınamadı (HTTP \(response.statusCode))")
+            throw HalError.message(Lf("Namaz vakitleri alınamadı (HTTP %1$d)", "Could not load prayer times (HTTP %1$d)", response.statusCode))
         }
         let json = try NetworkClient.json(data)
         guard let root = JSONValue.object(json),
               let payload = JSONValue.object(root["data"]),
               let timings = JSONValue.object(payload["timings"]) else {
-            throw HilalError.message("Namaz vakitleri okunamadı")
+            throw HalError.message(L("Namaz vakitleri okunamadı", "Could not read prayer times"))
         }
         let timezone = JSONValue.string(JSONValue.object(payload["meta"])?["timezone"]) ?? TimeZone.current.identifier
         let tz = TimeZone(identifier: timezone) ?? .current
@@ -39,18 +39,18 @@ enum PrayerService {
             JSONValue.string(hijriObject?["year"])
         ].compactMap { $0 }.joined(separator: " ")
 
-        let sequence: [(key: String, name: String, sunnah: Bool)] = [
-            ("Fajr", "İmsak", false),
-            ("Sunrise", "Güneş", true),
-            ("Dhuhr", "Öğle", false),
-            ("Asr", "İkindi", false),
-            ("Maghrib", "Akşam", false),
-            ("Isha", "Yatsı", false)
+        let sequence: [(key: String, sunnah: Bool)] = [
+            ("Fajr", false),
+            ("Sunrise", true),
+            ("Dhuhr", false),
+            ("Asr", false),
+            ("Maghrib", false),
+            ("Isha", false)
         ]
         let times: [PrayerTime] = sequence.compactMap { item in
             guard let raw = JSONValue.string(timings[item.key]) else { return nil }
             guard let date = parseTime(raw, timezone: tz, day: now) else { return nil }
-            return PrayerTime(id: item.key, name: item.name, time: date, isSunnah: item.sunnah)
+            return PrayerTime(id: item.key, name: PrayerCopy.name(id: item.key), time: date, isSunnah: item.sunnah)
         }
         return PrayerDay(
             gregorian: gregorian,

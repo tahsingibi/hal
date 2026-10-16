@@ -4,9 +4,7 @@ final class Runner: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ n: Notification) {
         let store = AppStore()
         store.settings.trackMedication = true; store.settings.trackIntake = true
-        store.settings.trackWorkout = true; store.settings.trackDua = true
-        store.settings.trackQuran = true
-        store.settings.duaList = [DuaItem(name: "Sabah zikri")]
+        store.settings.trackWorkout = true
         store.settings.medications = [
             Medication(name: "D3K2 + OMEGA3", dose: "1 tablet", times: [11*60+41]),
             Medication(name: "MAGNEZYUM", dose: "1 tablet", times: [9*60, 21*60])

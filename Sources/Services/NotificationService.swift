@@ -25,7 +25,7 @@ enum NotificationRoute {
 }
 
 extension Notification.Name {
-    static let hilalOpenTarget = Notification.Name("hilal.openTarget")
+    static let halOpenTarget = Notification.Name("hal.openTarget")
 }
 
 /// Bildirim tıklamasını yakalar. `UNUserNotificationCenter.delegate` zayıf referans
@@ -59,7 +59,7 @@ final class NotificationService {
     static let shared = NotificationService()
 
     private let center = UNUserNotificationCenter.current()
-    private let deliveredKey = "hilal.notify.delivered"
+    private let deliveredKey = "hal.notify.delivered"
     private let tapHandler = NotificationTapHandler()
     private var authorized: Bool?
     /// Uygulama henüz menü çubuğunu kurmadan tıklanırsa hedef burada bekler.
@@ -78,7 +78,7 @@ final class NotificationService {
         pendingTarget = target
         guard let target else { return }
         NotificationCenter.default.post(
-            name: .hilalOpenTarget,
+            name: .halOpenTarget,
             object: nil,
             userInfo: [NotificationRoute.targetKey: target]
         )

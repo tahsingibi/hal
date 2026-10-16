@@ -36,13 +36,13 @@ struct PortsPanel: View {
         }
         .task { await service.refresh() }
         .alert(alertTitle, isPresented: pendingShown) {
-            Button("Vazgeç", role: .cancel) { pending = nil }
+            Button(L("Vazgeç", "Cancel"), role: .cancel) { pending = nil }
             Button(confirmTitle, role: .destructive) {
                 if let pending { service.stop(pending) }
             }
         } message: {
             if let pending {
-                Text(service.stopDetail(for: pending, force: service.needsForce(pending.pid)))
+                Text(stopMessage(for: pending))
             }
         }
     }
@@ -50,7 +50,7 @@ struct PortsPanel: View {
     private var windowStack: some View {
         VStack(alignment: .leading, spacing: 12) {
             if showsTitle {
-                Text("Açık portlar")
+                Text(L("Açık portlar", "Open ports"))
                     .font(.system(size: 18, weight: .semibold))
             }
             caption
@@ -74,7 +74,10 @@ struct PortsPanel: View {
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
                     caption
-                    Text("Menü çubuğu ikonuna sağ tıklayıp Araçlar > Açık portlar ile de açılır.")
+                    Text(L(
+                        "Menü çubuğu ikonuna sağ tıklayıp Araçlar > Açık portlar ile de açılır.",
+                        "Also available via right-click on the menu bar icon → Tools > Open ports."
+                    ))
                 }
             }
         }
@@ -82,7 +85,10 @@ struct PortsPanel: View {
     }
 
     private var caption: some View {
-        Text("Dinleyen TCP portları. Durdur, programı sonlandırır; aynı programın diğer portları da kapanır.")
+        Text(L(
+            "Dinleyen TCP portları. Durdur, programı sonlandırır; aynı programın diğer portları da kapanır.",
+            "Listening TCP ports. Stop ends the program; its other ports close too."
+        ))
             .font(embedsInSettings ? .caption : .system(size: 11))
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -93,7 +99,7 @@ struct PortsPanel: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
-            TextField("Port veya program", text: $query)
+            TextField(L("Port veya program", "Port or program"), text: $query)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12))
         }
@@ -118,14 +124,15 @@ struct PortsPanel: View {
     private var filterControls: some View {
         HStack(spacing: 10) {
             developerChip
-            Toggle("Yalnızca benim süreçlerim", isOn: $onlyMine)
+            Toggle(L("Yalnızca benim süreçlerim", "Only my processes"), isOn: $onlyMine)
                 .toggleStyle(.checkbox)
                 .font(.system(size: 11))
                 .controlSize(.small)
                 .disabled(developersOnly)
                 .help(developersOnly
-                    ? "Geliştirici filtresi açıkken bütün kullanıcıların sunucuları listelenir."
-                    : "Sistem süreçlerini gizler")
+                    ? L("Geliştirici filtresi açıkken bütün kullanıcıların sunucuları listelenir.",
+                        "With the developer filter on, servers from all users are listed.")
+                    : L("Sistem süreçlerini gizler", "Hides system processes"))
             Spacer(minLength: 0)
         }
     }
@@ -134,7 +141,7 @@ struct PortsPanel: View {
         Button {
             developersOnly.toggle()
         } label: {
-            Text("Geliştirici")
+            Text(L("Geliştirici", "Developer"))
                 .font(.system(size: 11, weight: developersOnly ? .semibold : .medium))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
@@ -145,7 +152,10 @@ struct PortsPanel: View {
         }
         .buttonStyle(.plain)
         .fixedSize()
-        .help("React, Node, Vite, Docker, Supabase ve benzeri sunucular")
+        .help(L(
+            "React, Node, Vite, Docker, Supabase ve benzeri sunucular",
+            "React, Node, Vite, Docker, Supabase, and similar servers"
+        ))
     }
 
     @ViewBuilder
@@ -163,10 +173,10 @@ struct PortsPanel: View {
     }
 
     private var countLabel: String {
-        guard service.hasLoaded else { return "Bakılıyor…" }
-        if filtered.isEmpty { return "Port yok" }
+        guard service.hasLoaded else { return L("Bakılıyor…", "Looking…") }
+        if filtered.isEmpty { return L("Port yok", "No ports") }
         let programs = Set(filtered.map(\.pid)).count
-        return "\(filtered.count) port · \(programs) program"
+        return Lf("%1$d port · %2$d program", "%1$d ports · %2$d programs", filtered.count, programs)
     }
 
     private var refreshButton: some View {
@@ -183,7 +193,7 @@ struct PortsPanel: View {
                         .frame(width: 20, height: 20)
                 }
                 .buttonStyle(.plain)
-                .help("Yenile")
+                .help(L("Yenile", "Refresh"))
             }
         }
         .frame(width: 20, height: 20)
@@ -247,14 +257,16 @@ struct PortsPanel: View {
             }
             Spacer(minLength: 8)
             if port.canStop {
-                Button("Durdur", role: .destructive) { pending = port }
+                Button(L("Durdur", "Stop"), role: .destructive) { pending = port }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .fixedSize()
                     .disabled(service.stopping.contains(port.pid))
-                    .help("\(port.displayName) sürecini durdur (PID \(port.pid))")
+                    .help(Lf("%1$@ sürecini durdur (PID %2$d)", "Stop %1$@ (PID %2$d)", port.displayName, port.pid))
             } else {
-                Text(port.pid == Int32(ProcessInfo.processInfo.processIdentifier) ? "bu uygulama" : "sistem")
+                Text(port.pid == Int32(ProcessInfo.processInfo.processIdentifier)
+                     ? L("bu uygulama", "this app")
+                     : L("sistem", "system"))
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
             }
@@ -288,12 +300,12 @@ struct PortsPanel: View {
 
     private var emptyText: String {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !needle.isEmpty { return "Eşleşen port yok." }
-        if developersOnly { return "Geliştirici portu yok." }
+        if !needle.isEmpty { return L("Eşleşen port yok.", "No matching ports.") }
+        if developersOnly { return L("Geliştirici portu yok.", "No developer ports.") }
         if onlyMine && service.ports.contains(where: { $0.uid != service.myUID }) {
-            return "Senin süreçlerin dinlemiyor."
+            return L("Senin süreçlerin dinlemiyor.", "None of your processes are listening.")
         }
-        return "Dinleyen TCP portu yok."
+        return L("Dinleyen TCP portu yok.", "No listening TCP ports.")
     }
 
     private var pendingShown: Binding<Bool> {
@@ -306,13 +318,32 @@ struct PortsPanel: View {
     private var alertTitle: String {
         guard let pending else { return "" }
         if service.needsForce(pending.pid) {
-            return "\(pending.displayName) zorla durdurulsun mu?"
+            return Lf("%1$@ zorla durdurulsun mu?", "Force stop %1$@?", pending.displayName)
         }
-        return "\(pending.displayName) durdurulsun mu?"
+        return Lf("%1$@ durdurulsun mu?", "Stop %1$@?", pending.displayName)
     }
 
     private var confirmTitle: String {
-        guard let pending, service.needsForce(pending.pid) else { return "Durdur" }
-        return "Zorla durdur"
+        guard let pending, service.needsForce(pending.pid) else { return L("Durdur", "Stop") }
+        return L("Zorla durdur", "Force stop")
+    }
+
+    private func stopMessage(for port: PortScan.Listener) -> String {
+        let siblings = service.ports.filter { $0.pid == port.pid }.map(\.port).sorted()
+        let closing: String
+        if siblings.count <= 1 {
+            closing = Lf("%1$d portu boşalır.", "Port %1$d will free.", port.port)
+        } else {
+            let list = siblings.map(String.init).joined(separator: ", ")
+            closing = Lf("%1$@ portları boşalır.", "Ports %1$@ will free.", list)
+        }
+        if service.needsForce(port.pid) {
+            return Lf(
+                "Az önce kapanmadı. Zorla durdurmak PID %1$d sürecini anında keser. %2$@",
+                "It did not stop just now. Force stop kills PID %1$d immediately. %2$@",
+                port.pid, closing
+            )
+        }
+        return Lf("PID %1$d kapanır. %2$@", "PID %1$d will quit. %2$@", port.pid, closing)
     }
 }

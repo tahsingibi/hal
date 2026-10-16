@@ -145,7 +145,6 @@ enum Metric {
     static let focusSeconds = "focus.seconds"
     static let waterML = "water.ml"
     static let proteinG = "protein.g"
-    static let quranPages = "quran.pages"
     static let workoutDone = "workout.done"
 
     static func prayer(_ id: String) -> String { "prayer.\(id)" }

@@ -63,53 +63,26 @@ struct DetailPopoverView: View {
             iconButton(
                 store.pinned ? "pin.fill" : "pin",
                 help: store.pinned
-                    ? "Sabit: pencere dışarı tıklayınca kapanmaz. Kaldırmak için tıkla."
-                    : "Sabitle: pencere dışarı tıklayınca kapanmasın",
+                    ? L("Sabit: pencere dışarı tıklayınca kapanmaz. Kaldırmak için tıkla.",
+                        "Pinned: window stays open when you click outside. Click to unpin.")
+                    : L("Sabitle: pencere dışarı tıklayınca kapanmasın",
+                        "Pin: keep window open when clicking outside"),
                 active: store.pinned,
                 action: store.togglePinned
             )
-            iconButton("arrow.clockwise", help: "Kotaları ve vakitleri yenile") {
+            iconButton("arrow.clockwise", help: L("Kotaları ve vakitleri yenile", "Refresh quotas and prayer times")) {
                 loginHint = nil
                 Task { await store.refresh() }
             }
-            iconButton("gearshape", help: "Ayarlar") { onSettings(.location) }
+            iconButton("gearshape", help: L("Ayarlar", "Settings")) { onSettings(.location) }
         }
     }
 
     /// Modül sekmeleri; kayıttan türetilir, sabit liste yok.
     private var moduleTabs: some View {
-        HStack(spacing: 4) {
-            ForEach(store.modules) { item in
-                let on = module == item
-                Button {
-                    store.selectModule(item)
-                } label: {
-                    // Dört ve üzeri modülde yazı yalnızca seçili sekmede kalır;
-                    // 336 piksele dört başlık sığmıyor.
-                    // Dört ve üzeri modülde seçili olmayanlar yalnızca ikon olur ve
-                    // sabit dar bir yer kaplar; başlık seçili sekmeye kalır, kırılmaz.
-                    let compact = store.modules.count > 3 && !on
-                    Group {
-                        if compact {
-                            Image(systemName: item.symbol)
-                        } else {
-                            Label(item.title, systemImage: item.symbol)
-                                .labelStyle(.titleAndIcon)
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                        }
-                    }
-                    .font(.system(size: 12, weight: on ? .semibold : .medium))
-                    .frame(maxWidth: compact ? 34 : .infinity)
-                    .padding(.vertical, 6)
-                    .background(on ? Color.primary.opacity(0.12) : Color.clear, in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .help(item.title)
-            }
+        ModuleTabStrip(modules: store.modules, selected: module) { item in
+            store.selectModule(item)
         }
-        .padding(3)
-        .background(Color.primary.opacity(0.05), in: Capsule())
     }
 
     /// Seçili modülün sayfaları arasında geçiş.
@@ -172,7 +145,7 @@ struct DetailPopoverView: View {
                 if let page = pages.first(where: { $0.id == id }) {
                     body(for: page)
                 } else {
-                    Text("İçerik yok").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text(L("İçerik yok", "Nothing here")).font(.system(size: 12)).foregroundStyle(.secondary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -210,14 +183,10 @@ struct DetailPopoverView: View {
             if let item = page.item, let group = store.quotas.first(where: { $0.id == item }) {
                 quotaBody(group)
             } else {
-                Text("Kota yok").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text(L("Kota yok", "No quotas")).font(.system(size: 12)).foregroundStyle(.secondary)
             }
         case .prayer:
-            switch page.item {
-            case "quran": quranBody
-            case "dua": duaBody
-            default: prayerBody
-            }
+            prayerBody
         case .calendar:
             calendarBody
         case .fitness:
@@ -275,17 +244,18 @@ struct DetailPopoverView: View {
         // Oturum yokluğu ile okuma hatası ayrı şeyler; ikisini aynı başlıkla göstermiyoruz.
         if isMissingAuth(group) {
             switch group.kind {
-            case .claude: return "Claude oturumu yok"
-            case .codex: return "Codex oturumu yok"
-            case .grok: return "Grok henüz bağlı değil"
-            case .custom: return "\(group.name) için kaynak yok"
+            case .claude: return L("Claude oturumu yok", "No Claude session")
+            case .codex: return L("Codex oturumu yok", "No Codex session")
+            case .grok: return L("Grok henüz bağlı değil", "Grok is not connected yet")
+            case .custom: return Lf("%1$@ için kaynak yok", "No source for %1$@", group.name)
             }
         }
         let message = group.message ?? ""
-        if message.localizedCaseInsensitiveContains("süresi dolmuş") {
-            return "\(group.name) oturumu süresi dolmuş"
+        if message.localizedCaseInsensitiveContains("süresi dolmuş")
+            || message.localizedCaseInsensitiveContains("expired") {
+            return Lf("%1$@ oturumu süresi dolmuş", "%1$@ session expired", group.name)
         }
-        return "\(group.name) kotası okunamadı"
+        return Lf("%1$@ kotası okunamadı", "Could not read %1$@ quota", group.name)
     }
 
     private func setupDetail(_ group: QuotaGroup) -> String {
@@ -299,13 +269,25 @@ struct DetailPopoverView: View {
     private func setupHint(_ group: QuotaGroup) -> String {
         switch group.kind {
         case .claude:
-            return "Kota api.anthropic.com/api/oauth/usage adresinden okunur; oturum Keychain’deki “Claude Code-credentials” kaydından gelir. Terminalde claude /login çalıştır, sonra Yenile’ye bas."
+            return L(
+                "Kota api.anthropic.com/api/oauth/usage adresinden okunur; oturum Keychain’deki “Claude Code-credentials” kaydından gelir. Terminalde claude /login çalıştır, sonra Yenile’ye bas.",
+                "Quota is read from api.anthropic.com/api/oauth/usage; the session comes from the Keychain “Claude Code-credentials” entry. Run claude /login in Terminal, then tap Refresh."
+            )
         case .grok:
-            return "Haftalık sınır grok’un kendi fatura ucundan okunur. Oturum ~/.grok/auth.json dosyasıdır. Terminalde grok login çalıştır, sonra Yenile."
+            return L(
+                "Haftalık sınır grok’un kendi fatura ucundan okunur. Oturum ~/.grok/auth.json dosyasıdır. Terminalde grok login çalıştır, sonra Yenile.",
+                "The weekly limit is read from grok’s own billing endpoint. The session is ~/.grok/auth.json. Run grok login in Terminal, then Refresh."
+            )
         case .codex:
-            return "Kota chatgpt.com/backend-api/wham/usage adresinden okunur; oturum ~/.codex/auth.json dosyasından gelir. Terminalde codex login çalıştır, sonra Yenile’ye bas."
+            return L(
+                "Kota chatgpt.com/backend-api/wham/usage adresinden okunur; oturum ~/.codex/auth.json dosyasından gelir. Terminalde codex login çalıştır, sonra Yenile’ye bas.",
+                "Quota is read from chatgpt.com/backend-api/wham/usage; the session comes from ~/.codex/auth.json. Run codex login in Terminal, then tap Refresh."
+            )
         case .custom:
-            return "Bu kaynağın JSON çıktısında kota alanı bulunamadı. Ayarlar’dan komutu veya URL’yi kontrol et."
+            return L(
+                "Bu kaynağın JSON çıktısında kota alanı bulunamadı. Ayarlar’dan komutu veya URL’yi kontrol et.",
+                "No quota field found in this source’s JSON output. Check the command or URL in Settings."
+            )
         }
     }
 
@@ -316,32 +298,34 @@ struct DetailPopoverView: View {
 
     private func setupActions(_ group: QuotaGroup) -> [SetupAction] {
         var actions: [SetupAction] = []
+        let openedHint = L("Terminal açıldı. Giriş bittikten sonra Yenile’ye bas.",
+                           "Terminal opened. After you finish signing in, tap Refresh.")
         switch group.kind {
         case .claude:
-            actions.append(SetupAction(title: "Terminalde giriş") {
+            actions.append(SetupAction(title: L("Terminalde giriş", "Sign in via Terminal")) {
                 if let error = ClaudeAuth.openLogin() {
                     loginHint = error
                 } else {
-                    loginHint = "Terminal açıldı. Giriş bittikten sonra Yenile’ye bas."
+                    loginHint = openedHint
                 }
             })
         case .grok:
-            actions.append(SetupAction(title: "Terminalde giriş") {
+            actions.append(SetupAction(title: L("Terminalde giriş", "Sign in via Terminal")) {
                 if let error = GrokAuth.openLogin() {
                     loginHint = error
                 } else {
-                    loginHint = "Terminal açıldı. Giriş bittikten sonra Yenile’ye bas."
+                    loginHint = openedHint
                 }
             })
         case .codex, .custom:
             break
         }
-        actions.append(SetupAction(title: "Yenile") {
+        actions.append(SetupAction(title: L("Yenile", "Refresh")) {
             loginHint = nil
             Task { await store.refresh() }
         })
         if group.kind != .grok {
-            actions.append(SetupAction(title: "Ayarlar") { onSettings(.quota) })
+            actions.append(SetupAction(title: L("Ayarlar", "Settings")) { onSettings(.quota) })
         }
         return actions
     }
@@ -369,7 +353,7 @@ struct DetailPopoverView: View {
                     }
                 }
                 .frame(height: 6)
-                Text("\(window.percentText) kullanıldı")
+                Text(Lf("%1$@ kullanıldı", "%1$@ used", window.percentText))
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
                 if !window.usedText.isEmpty {
@@ -379,7 +363,7 @@ struct DetailPopoverView: View {
                 }
             } else {
                 // Sağlayıcının bir kota tavanı yok: yüzde uydurmak yerine ham değeri göster.
-                Text(window.usedText.isEmpty ? "Kota sınırı yok" : window.usedText)
+                Text(window.usedText.isEmpty ? L("Kota sınırı yok", "No quota limit") : window.usedText)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
@@ -414,8 +398,10 @@ struct DetailPopoverView: View {
                 // Satırların hepsi gizlenmişse sorun modüllerde değil; kullanıcıyı
                 // yanlış yere göndermeyelim.
                 Text(store.allTodayLines.isEmpty
-                     ? "Gösterilecek bir şey yok. Ayarlar’dan modülleri aç."
-                     : "Bütün satırlar gizli. Ayarlar > Görünüm’den geri açabilirsin.")
+                     ? L("Gösterilecek bir şey yok. Ayarlar’dan modülleri aç.",
+                         "Nothing to show. Turn on modules in Settings.")
+                     : L("Bütün satırlar gizli. Ayarlar > Görünüm’den geri açabilirsin.",
+                         "All rows are hidden. You can turn them back on in Settings > Appearance."))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             } else {
@@ -496,137 +482,38 @@ struct DetailPopoverView: View {
         .buttonStyle(.plain)
     }
 
-    private var duaBody: some View {
-        let items = store.settings.duaList
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("\(store.duaDoneCount)")
-                    .font(.system(size: 24, weight: .semibold, design: .rounded))
-                Text("/ \(items.count)")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if store.duaStreak > 1 {
-                    Text("\(store.duaStreak) gün seri")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            VStack(spacing: 3) {
-                ForEach(items) { item in
-                    let done = store.isDuaDone(item)
-                    Button { store.toggleDua(item) } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 12))
-                                .foregroundStyle(done ? Color(hex: "5BC48A") : Color.secondary.opacity(0.5))
-                            Text(item.name)
-                                .font(.system(size: 12))
-                                .foregroundStyle(done ? Color.secondary : Color.primary)
-                                .strikethrough(done, color: .secondary)
-                            Spacer(minLength: 0)
-                        }
-                        .contentShape(Rectangle())
-                        .padding(.vertical, 2)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    private var quranBody: some View {
-        let read = DailyLog.shared.value(Metric.quranPages, on: store.now)
-        let goal = store.settings.quranGoalPages
-        return VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("\(Int(read))")
-                        .font(.system(size: 30, weight: .semibold, design: .rounded))
-                    Text("/ \(Int(goal)) sayfa")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                }
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.primary.opacity(0.08))
-                        Capsule()
-                            .fill(Color(hex: "5BC48A"))
-                            .frame(width: goal > 0 ? max(4, geo.size.width * min(read / goal, 1)) : 0)
-                    }
-                }
-                .frame(height: 5)
-                if store.quranStreak > 1 {
-                    Text("\(store.quranStreak) gün üst üste hedefe ulaşıldı")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            HStack(spacing: 6) {
-                stepButton("+1 sayfa", tint: "5BC48A") { store.adjustIntake(Metric.quranPages, 1) }
-                stepButton("+5", tint: "5BC48A") { store.adjustIntake(Metric.quranPages, 5) }
-                stepButton("−1", tint: "5BC48A") { store.adjustIntake(Metric.quranPages, -1) }
-                Spacer()
-            }
-            weekBars
-        }
-    }
-
-    /// Son yedi günün sayfa grafiği; seriyi tek bakışta gösterir.
-    private var weekBars: some View {
-        let calendar = Calendar.current
-        let goal = max(store.settings.quranGoalPages, 1)
-        let days: [(String, Double)] = (0..<7).reversed().compactMap { back in
-            guard let date = calendar.date(byAdding: .day, value: -back, to: store.now) else { return nil }
-            return (TimeFormatters.weekdayInitial(date), DailyLog.shared.value(Metric.quranPages, on: date))
-        }
-        return VStack(alignment: .leading, spacing: 4) {
-            Text("Son 7 gün")
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-            HStack(alignment: .bottom, spacing: 6) {
-                ForEach(Array(days.enumerated()), id: \.offset) { _, day in
-                    VStack(spacing: 3) {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(day.1 >= goal ? Color(hex: "5BC48A") : Color.primary.opacity(0.18))
-                            .frame(width: 16, height: max(3, min(day.1 / goal, 1.2) * 34))
-                        Text(day.0)
-                            .font(.system(size: 9))
-                            .foregroundStyle(.tertiary)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-            }
-            .frame(height: 50, alignment: .bottom)
-        }
-    }
-
     private var calendarBody: some View {
         let service = CalendarService.shared
         return VStack(alignment: .leading, spacing: 10) {
             switch service.access {
             case .notDetermined:
-                Text("Takvim bağlı değil")
+                Text(L("Takvim bağlı değil", "Calendar not connected"))
                     .font(.system(size: 13, weight: .semibold))
-                Text("Yaklaşan toplantıları burada görmek için takvim erişimi gerekiyor. İzin yalnızca sen istediğinde sorulur.")
+                Text(L(
+                    "Yaklaşan toplantıları burada görmek için takvim erişimi gerekiyor. İzin yalnızca sen istediğinde sorulur.",
+                    "Calendar access is needed to show upcoming meetings here. Permission is asked only when you choose."
+                ))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Button("Takvime bağlan") {
+                Button(L("Takvime bağlan", "Connect calendar")) {
                     Task { await service.requestAccess() }
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             case .denied:
-                Text("Takvim erişimi kapalı")
+                Text(L("Takvim erişimi kapalı", "Calendar access is off"))
                     .font(.system(size: 13, weight: .semibold))
-                Text("Sistem Ayarları > Gizlilik ve Güvenlik > Takvimler içinden Hâl’e izin verebilirsin.")
+                Text(L(
+                    "Sistem Ayarları > Gizlilik ve Güvenlik > Takvimler içinden Hâl’e izin verebilirsin.",
+                    "Allow Hâl in System Settings > Privacy & Security > Calendars."
+                ))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             case .granted:
                 if service.events.isEmpty {
-                    Text("Bugün için kalan olay yok.")
+                    Text(L("Bugün için kalan olay yok.", "No remaining events today."))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 } else {
@@ -672,7 +559,7 @@ struct DetailPopoverView: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("\(taken)")
                     .font(.system(size: 24, weight: .semibold, design: .rounded))
-                Text("/ \(doses.count) doz")
+                Text(Lf("/ %1$d doz", "/ %1$d doses", doses.count))
                     .font(.system(size: 13)).foregroundStyle(.secondary)
                 Spacer()
             }
@@ -703,7 +590,7 @@ struct DetailPopoverView: View {
                             }
                             Spacer(minLength: 0)
                             if overdue {
-                                Text("geçti").font(.system(size: 10)).foregroundStyle(Color(hex: "E8A04A"))
+                                Text(L("geçti", "missed")).font(.system(size: 10)).foregroundStyle(Color(hex: "E8A04A"))
                             }
                         }
                         .contentShape(Rectangle())
@@ -725,7 +612,7 @@ struct DetailPopoverView: View {
                 Text(Workout.dayNames[Workout.index(for: store.now)])
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
-                Text(rest ? "Dinlenme" : label)
+                Text(rest ? L("Dinlenme", "Rest") : label)
                     .font(.system(size: 20, weight: .semibold))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -736,7 +623,7 @@ struct DetailPopoverView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                        Text(done ? "Tamamlandı" : "Tamamlandı olarak işaretle")
+                        Text(done ? L("Tamamlandı", "Done") : L("Tamamlandı olarak işaretle", "Mark as done"))
                     }
                     .font(.system(size: 12, weight: .medium))
                     .padding(.horizontal, 10)
@@ -752,12 +639,12 @@ struct DetailPopoverView: View {
 
             HStack(spacing: 10) {
                 if week.planned > 0 {
-                    Text("Bu hafta \(week.done)/\(week.planned)")
+                    Text(Lf("Bu hafta %1$d/%2$d", "This week %1$d/%2$d", week.done, week.planned))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
                 if store.workoutStreak > 1 {
-                    Text("\(store.workoutStreak) antrenman üst üste")
+                    Text(Lf("%1$d antrenman üst üste", "%1$d workouts in a row", store.workoutStreak))
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                 }
@@ -773,7 +660,7 @@ struct DetailPopoverView: View {
         let todayIndex = Workout.index(for: store.now)
         let week = calendar.dateInterval(of: .weekOfYear, for: store.now)
         return VStack(alignment: .leading, spacing: 5) {
-            Text("Bu hafta")
+            Text(L("Bu hafta", "This week"))
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
             ForEach(Array(store.settings.workoutPlan.enumerated()), id: \.offset) { index, plan in
@@ -803,16 +690,17 @@ struct DetailPopoverView: View {
         let items = store.upcomingSubscriptions
         return VStack(alignment: .leading, spacing: 10) {
             if store.monthlyTotals.isEmpty {
-                Text("Henüz düzenli ödeme yok. Ayarlar > Ödemeler’den ekle.")
+                Text(L("Henüz düzenli ödeme yok. Ayarlar > Ödemeler’den ekle.",
+                       "No recurring payments yet. Add them in Settings > Payments."))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             } else {
                 HStack(spacing: 10) {
                     ForEach(store.monthlyTotals, id: \.currency) { total in
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("\(Subscription.symbol(for: total.currency))\(String(format: "%.0f", total.amount))")
+                            Text("\(Subscription.symbol(for: total.currency))\(String(format: "%.0f", locale: Language.locale, total.amount))")
                                 .font(.system(size: 17, weight: .semibold, design: .rounded))
-                            Text("aylık")
+                            Text(L("aylık", "monthly"))
                                 .font(.system(size: 10))
                                 .foregroundStyle(.tertiary)
                         }
@@ -832,7 +720,7 @@ struct DetailPopoverView: View {
                             VStack(alignment: .trailing, spacing: 0) {
                                 Text(item.amountText)
                                     .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                Text(days == 0 ? "bugün" : "\(days) gün")
+                                Text(days == 0 ? L("bugün", "today") : Lf("%1$d gün", "%1$d days", days))
                                     .font(.system(size: 10))
                                     .foregroundStyle(.tertiary)
                             }
@@ -846,9 +734,10 @@ struct DetailPopoverView: View {
     private var prayerBody: some View {
         VStack(alignment: .leading, spacing: 6) {
             if !store.settings.hasLocation {
-                Text("Konum seçilmedi")
+                Text(L("Konum seçilmedi", "No location chosen"))
                     .font(.system(size: 13, weight: .medium))
-                Text("Vakitler için Ayarlar › İbadet’ten bir şehir seç.")
+                Text(L("Vakitler için Ayarlar › İbadet’ten bir şehir seç.",
+                       "Choose a city in Settings › Prayer for times."))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -874,12 +763,14 @@ struct DetailPopoverView: View {
                                     .foregroundStyle(store.isPrayerDone(item) ? Color(hex: "5BC48A") : Color.secondary.opacity(0.5))
                             }
                             .buttonStyle(.plain)
-                            .help(store.isPrayerDone(item) ? "Kılındı olarak işaretlendi" : "Kıldım olarak işaretle")
+                            .help(store.isPrayerDone(item)
+                                  ? L("Kılındı olarak işaretlendi", "Marked as prayed")
+                                  : L("Kıldım olarak işaretle", "Mark as prayed"))
                         } else if store.settings.trackPrayers {
                             // Güneş dahil tüm satırlar aynı hizada dursun.
                             Color.clear.frame(width: 12, height: 12)
                         }
-                        Text(item.name)
+                        Text(item.localizedName)
                             .font(.system(size: 13, weight: isNext ? .semibold : .regular))
                         Spacer()
                         if isNext {
@@ -895,13 +786,13 @@ struct DetailPopoverView: View {
                     .padding(.vertical, 1)
                 }
                 if store.settings.trackPrayers, store.prayerStreak > 1 {
-                    Text("\(store.prayerStreak) gün üst üste tam")
+                    Text(Lf("%1$d gün üst üste tam", "%1$d days in a row complete", store.prayerStreak))
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                         .padding(.top, 2)
                 }
             } else {
-                Text(store.lastError ?? "Vakitler yükleniyor…")
+                Text(store.lastError ?? L("Vakitler yükleniyor…", "Loading prayer times…"))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
@@ -942,7 +833,7 @@ struct DetailPopoverView: View {
 
     private var headerTitle: String {
         guard let page = selectedPageModel else { return module.title }
-        return page.module == .usage ? "\(page.title) kotası" : page.title
+        return page.module == .usage ? Lf("%1$@ kotası", "%1$@ quota", page.title) : page.title
     }
 
     private var headerBrand: BrandIcon {
@@ -971,9 +862,289 @@ struct DetailPopoverView: View {
 }
 
 extension Notification.Name {
-    static let hilalOpenSettings = Notification.Name("hilal.openSettings")
+    static let halOpenSettings = Notification.Name("hal.openSettings")
 }
 
+
+/// Sekme şeridi. Sekmeler sıkışmaz; sığmayanlar trackpad kaydırması ya da
+/// sürükleme ile gelir. Seçili sekme yazısı sonradan genişler; yerleşim yeni
+/// çerçeveyi verince şerit o yazının tamamını kapsülün içine alır.
+private struct ModuleTabStrip: View {
+    let modules: [ModuleKind]
+    let selected: ModuleKind
+    let onSelect: (ModuleKind) -> Void
+
+    @State private var offset: CGFloat = 0
+    @State private var drag: CGFloat = 0
+    @State private var dragging = false
+    @State private var frames: [String: CGRect] = [:]
+    @State private var viewport: CGFloat = 0
+    /// Seçim değişince artar. Yerleşim, büyümüş çerçeveyi içeri alınca eşitlenir.
+    @State private var revealGeneration = 0
+    @State private var revealedGeneration = -1
+    @State private var revealedWidth: CGFloat = 0
+
+    /// Şeridin ideal genişliği. Arka plan ölçeri kırpılan genişliği verdiği için
+    /// sekmelerin kendi çerçevelerinden okunur; sağ boşluk sol boşluğa eşittir.
+    private var contentWidth: CGFloat {
+        let laid = frames.values.filter { $0.width > 1 }
+        guard laid.count == modules.count else { return 0 }
+        let maxX = laid.map(\.maxX).max() ?? 0
+        let minX = laid.map(\.minX).min() ?? 0
+        return maxX + minX
+    }
+
+    private var minOffset: CGFloat { min(0, viewport - contentWidth) }
+
+    /// Sürüklerken uçlarda lastik; bırakınca model konumu olduğu gibi durur.
+    private var shownOffset: CGFloat {
+        dragging || drag != 0 ? resist(offset + drag) : offset
+    }
+
+    var body: some View {
+        // Görünen alan, şeridin ideal genişliği değil, ebeveynin verdiği genişliktir.
+        // Aksi halde kapsül içerikle birlikte büyür ve popover sağ kenarı yazıyı keser.
+        GeometryReader { geo in
+            strip
+                .offset(x: shownOffset)
+                .frame(width: geo.size.width, height: 34, alignment: .leading)
+                .clipped()
+                .preference(key: TabViewportKey.self, value: geo.size.width)
+        }
+        .frame(height: 34)
+        .background(Color.primary.opacity(0.05), in: Capsule())
+        .clipShape(Capsule())
+        .contentShape(Capsule())
+        .simultaneousGesture(pan)
+        .background(TabWheelMonitor { applyWheel($0) })
+        .onPreferenceChange(TabFramesKey.self) { frames = $0; scheduleRevealIfNeeded() }
+        .onPreferenceChange(TabViewportKey.self) { viewport = $0; scheduleRevealIfNeeded() }
+        .onChange(of: selected) { _, _ in
+            revealGeneration += 1
+            revealedWidth = 0
+            scheduleRevealIfNeeded()
+        }
+    }
+
+    private var strip: some View {
+        UncompressedHStack(spacing: 4) {
+            ForEach(modules) { item in
+                tab(item)
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .fixedSize(horizontal: true, vertical: false)
+        .coordinateSpace(name: "moduleTabs")
+    }
+
+    private func tab(_ item: ModuleKind) -> some View {
+        let on = selected == item
+        let compact = modules.count > 3 && !on
+        return Button {
+            onSelect(item)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: item.symbol)
+                    .frame(width: 16, height: 16)
+                if !compact {
+                    Text(item.title)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+            }
+            .font(.system(size: 12, weight: on ? .semibold : .medium))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .frame(minWidth: compact ? 36 : nil)
+            .fixedSize(horizontal: true, vertical: false)
+            .background(on ? Color.primary.opacity(0.12) : Color.clear, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(item.title)
+        .background {
+            GeometryReader { geo in
+                Color.clear.preference(
+                    key: TabFramesKey.self,
+                    value: [item.id: geo.frame(in: .named("moduleTabs"))]
+                )
+            }
+        }
+    }
+
+    private var pan: some Gesture {
+        DragGesture(minimumDistance: 8, coordinateSpace: .local)
+            .onChanged { value in
+                dragging = true
+                drag = value.translation.width
+            }
+            .onEnded { value in
+                let flick = (value.predictedEndTranslation.width - value.translation.width) * 0.2
+                let next = resist(offset + value.translation.width + flick)
+                withAnimation(.easeOut(duration: 0.22)) {
+                    offset = min(0, max(minOffset, next))
+                    drag = 0
+                }
+                dragging = false
+                scheduleRevealIfNeeded()
+            }
+    }
+
+    private func applyWheel(_ delta: CGFloat) {
+        guard !dragging, minOffset < 0 else { return }
+        offset = min(0, max(minOffset, offset + delta))
+    }
+
+    private func scheduleRevealIfNeeded() {
+        DispatchQueue.main.async { revealAfterLayout() }
+    }
+
+    /// Seçili sekmenin çerçevesi değişince (ikonken yazı eklenince de) tamamını
+    /// görünür alanın içine alır. Kullanıcı daha sonra kaydırırsa geri çekmez.
+    private func revealAfterLayout() {
+        guard !dragging else { return }
+        guard viewport > 1, let frame = frames[selected.id], frame.width > 1 else { return }
+        // Genişlik henüz bu sekmeyi kapsamıyorsa ölçüm yarımdır; sonraki geçişi bekle.
+        guard contentWidth + 0.5 >= frame.maxX else { return }
+
+        let pending = revealedGeneration != revealGeneration
+        let grew = frame.width > revealedWidth + 1
+        if !pending && !grew { return }
+        if !pending && frameIsInside(frame, at: offset) {
+            revealedWidth = frame.width
+            return
+        }
+
+        let next = clampedOffset(placing: frame)
+        if abs(next - offset) > 0.5 {
+            withAnimation(.easeInOut(duration: 0.2)) { offset = next }
+        } else {
+            offset = next
+        }
+        revealedWidth = frame.width
+        if frameIsInside(frame, at: next) || frame.width + 8 >= viewport {
+            revealedGeneration = revealGeneration
+        }
+    }
+
+    /// Çerçeveler şeridin kendi koordinatında; `origin` görünen pencerenin solu.
+    private func frameIsInside(_ frame: CGRect, at origin: CGFloat) -> Bool {
+        let left = -origin
+        let right = left + viewport
+        return frame.minX >= left - 0.5 && frame.maxX <= right + 0.5
+    }
+
+    /// Seçili sekmeyi kapsül kenarından birkaç punto içeride tutar.
+    private func clampedOffset(placing frame: CGRect) -> CGFloat {
+        let inset: CGFloat = 4
+        let left = -offset
+        let right = left + viewport
+        var next = offset
+        if frame.width + inset * 2 >= viewport {
+            next = -(frame.minX - inset)
+        } else if frame.minX < left + inset {
+            next = -(frame.minX - inset)
+        } else if frame.maxX > right - inset {
+            next = -(frame.maxX - viewport + inset)
+        }
+        return min(0, max(minOffset, next))
+    }
+
+    private func resist(_ raw: CGFloat) -> CGFloat {
+        if raw > 0 { return raw * 0.3 }
+        if raw < minOffset { return minOffset + (raw - minOffset) * 0.3 }
+        return raw
+    }
+}
+
+/// Trackpad’in yatay kaydırmasını şeride bağlar. Tıklamayı yutmaz.
+private struct TabWheelMonitor: NSViewRepresentable {
+    var onDelta: (CGFloat) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        context.coordinator.start(on: view)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.onDelta = onDelta
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSView, context: Context) -> CGSize? {
+        proposal.replacingUnspecifiedDimensions()
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.stop()
+    }
+
+    final class Coordinator {
+        var onDelta: (CGFloat) -> Void = { _ in }
+        var monitor: Any?
+
+        func start(on view: NSView) {
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak view] event in
+                guard let view, let window = view.window, event.window == window else { return event }
+                let point = view.convert(event.locationInWindow, from: nil)
+                guard view.bounds.contains(point) else { return event }
+                let dx = event.scrollingDeltaX
+                guard abs(dx) > abs(event.scrollingDeltaY), abs(dx) > 0.01 else { return event }
+                let delta = event.hasPreciseScrollingDeltas ? dx : dx * 16
+                self.onDelta(delta)
+                return nil
+            }
+        }
+
+        func stop() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+        }
+    }
+}
+
+private struct TabFramesKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
+}
+
+private struct TabViewportKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+/// Sekmeleri ideal genişliklerinde dizer. Dar bir öneri gelse bile çocuklar bölünmez.
+private struct UncompressedHStack: Layout {
+    var spacing: CGFloat = 4
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = idealSizes(subviews)
+        let width = sizes.reduce(CGFloat(0)) { $0 + $1.width } + spacing * CGFloat(max(sizes.count - 1, 0))
+        let height = sizes.map(\.height).max() ?? 0
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let sizes = idealSizes(subviews)
+        var x = bounds.minX
+        for (subview, size) in zip(subviews, sizes) {
+            subview.place(
+                at: CGPoint(x: x, y: bounds.midY),
+                anchor: .leading,
+                proposal: ProposedViewSize(width: size.width, height: bounds.height)
+            )
+            x += size.width + spacing
+        }
+    }
+
+    private func idealSizes(_ subviews: Subviews) -> [CGSize] {
+        subviews.map { $0.sizeThatFits(.unspecified) }
+    }
+}
 
 /// Sayfa başına doğal yükseklik; popover'ı seçili sayfaya göre boyutlandırmak için.
 private struct PageHeightKey: PreferenceKey {
