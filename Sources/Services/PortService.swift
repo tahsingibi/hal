@@ -132,14 +132,13 @@ final class PortService: ObservableObject {
         }
     }
 
-    /// Paketli uygulamada lsof'un verdiği `Code Helper` yerine görünen ad
-    /// (Cursor, Figma). Yardımcı sürecin kendi adı alt satıra iner.
+    /// Paketli uygulamada lsof'un verdiği `Code Helper` veya paket kimliği yerine
+    /// görünen ad (Brave Browser, Cursor). Yardımcı sürecin kendi adı alt satıra iner.
     private static func withAppName(_ port: PortScan.Listener) -> PortScan.Listener {
         var port = port
-        guard let app = NSRunningApplication(processIdentifier: port.pid),
-              app.bundleURL != nil,
-              let name = app.localizedName?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !name.isEmpty else { return port }
+        guard let app = NSRunningApplication(processIdentifier: port.pid), app.bundleURL != nil else { return port }
+        let resolved = AppIdentity.resolve(pid: port.pid, bundleIdentifier: app.bundleIdentifier)
+        guard let name = resolved.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return port }
         if port.hint == nil, !PortScan.sameProcessName(name, port.command) {
             port.hint = port.command
         }

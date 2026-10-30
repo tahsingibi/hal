@@ -291,7 +291,8 @@ enum ProcessRunner {
         _ launchPath: String,
         arguments: [String],
         timeout: TimeInterval = 8,
-        environment: [String: String]? = nil
+        environment: [String: String]? = nil,
+        mergeStderr: Bool = false
     ) throws -> (status: Int32, data: Data) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: launchPath)
@@ -315,7 +316,12 @@ enum ProcessRunner {
             }
         }
         stderr.fileHandleForReading.readabilityHandler = { handle in
-            if handle.availableData.isEmpty { handle.readabilityHandler = nil }
+            let chunk = handle.availableData
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+            } else if mergeStderr {
+                collector.append(chunk)
+            }
         }
 
         let deadline = Date().addingTimeInterval(timeout)

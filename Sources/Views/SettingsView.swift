@@ -3,10 +3,10 @@ import SwiftUI
 
 enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
     // Uygulama
-    case general, appearance, notifications
+    case general, appearance, notifications, wake
     // Modüller — popover sekmeleriyle aynı sırada
-    case focus, quota, worship, calendar, fitness, money, downloader, ports
-    case about
+    case focus, quota, worship, calendar, fitness, money, downloader, ports, homebrew, mixer, updates
+    case about, changelog
 
     var id: String { rawValue }
 
@@ -30,10 +30,10 @@ enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
 
         var tabs: [SettingsTab] {
             switch self {
-            case .app: return [.general, .appearance, .notifications]
+            case .app: return [.general, .appearance, .notifications, .wake]
             case .modules: return [.focus, .quota, .worship, .calendar, .fitness, .money]
-            case .tools: return [.downloader, .ports]
-            case .info: return [.about]
+            case .tools: return [.downloader, .ports, .homebrew, .mixer, .updates]
+            case .info: return [.about, .changelog]
             }
         }
     }
@@ -43,6 +43,7 @@ enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
         case .general: return L("Genel", "General")
         case .appearance: return L("Görünüm", "Appearance")
         case .notifications: return L("Bildirimler", "Notifications")
+        case .wake: return L("Uyanık tutma", "Keep awake")
         case .focus: return L("Odak", "Focus")
         case .quota: return L("Kotalar", "Quotas")
         case .worship: return L("İbadet", "Prayer")
@@ -51,7 +52,11 @@ enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
         case .money: return L("Ödemeler", "Payments")
         case .downloader: return L("İndirici", "Downloader")
         case .ports: return L("Portlar", "Ports")
+        case .homebrew: return "Homebrew"
+        case .mixer: return L("Ses", "Sound")
+        case .updates: return L("Güncellemeler", "Updates")
         case .about: return L("Hakkında", "About")
+        case .changelog: return L("Yenilikler", "What's New")
         }
     }
 
@@ -60,6 +65,7 @@ enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
         case .general: return "gearshape"
         case .appearance: return "menubar.rectangle"
         case .notifications: return "bell"
+        case .wake: return "moon.zzz"
         case .focus: return "scope"
         case .quota: return "gauge"
         case .worship: return "moon.stars"
@@ -68,7 +74,11 @@ enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
         case .money: return "creditcard"
         case .downloader: return "arrow.down.circle"
         case .ports: return "network"
+        case .homebrew: return "shippingbox"
+        case .mixer: return "speaker.wave.2"
+        case .updates: return "arrow.triangle.2.circlepath"
         case .about: return "info.circle"
+        case .changelog: return "sparkles"
         }
     }
 
@@ -80,6 +90,7 @@ enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
 struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
     @State private var tab: SettingsTab
+    @State private var query = ""
     @State private var draft = CustomProvider(name: "")
     @State private var adding = false
     @State private var legacyKeychainCount = 0
@@ -99,24 +110,37 @@ struct SettingsView: View {
         // kırpılmıyor, yeni bölüm eklemek de genişlik hesabı gerektirmiyor.
         NavigationSplitView {
             List(selection: sidebarSelection) {
-                ForEach(SettingsTab.Group.allCases) { group in
-                    if group.title.isEmpty {
-                        ForEach(group.tabs) { row($0) }
+                ForEach(filteredGroups, id: \.group.id) { entry in
+                    if entry.group.title.isEmpty || !query.isEmpty {
+                        ForEach(entry.tabs) { row($0) }
                     } else {
-                        Section(group.title) {
-                            ForEach(group.tabs) { row($0) }
+                        Section(entry.group.title) {
+                            ForEach(entry.tabs) { row($0) }
                         }
                     }
                 }
             }
-            .navigationSplitViewColumnWidth(min: 172, ideal: 182, max: 210)
+            .listStyle(.sidebar)
+            .navigationSplitViewColumnWidth(min: 196, ideal: 220, max: 260)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField(L("Ayarlarda ara", "Search settings"), text: $query)
+                        .textFieldStyle(.plain)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .padding(10)
+            }
         } detail: {
             // Form kendi içinde kayar. Dıştan bir ScrollView'a sarmak iç içe kaydırma
             // doğurup alan tıklamalarını ve metin girişini engelliyordu.
             content
                 .navigationTitle(tab.title)
         }
-        .frame(width: 700, height: 640)
+        .frame(minWidth: 760, minHeight: 540)
         .onAppear {
             legacyKeychainCount = SecretStore.legacyItemCount()
         }
@@ -141,6 +165,7 @@ struct SettingsView: View {
         case .general: generalTab
         case .appearance: menuBarTab
         case .notifications: notificationsTab
+        case .wake: wakeTab
         case .focus: focusTab
         case .quota: quotaTab
         case .worship: worshipTab
@@ -149,7 +174,21 @@ struct SettingsView: View {
         case .money: moneyTab
         case .downloader: downloaderTab
         case .ports: portsTab
+        case .homebrew: HomebrewPanel().padding(20)
+        case .mixer: VolumeMixerPanel().padding(20)
+        case .updates: UpdatesPanel().padding(20)
         case .about: aboutTab
+        case .changelog: changelogTab
+        }
+    }
+
+    private var filteredGroups: [(group: SettingsTab.Group, tabs: [SettingsTab])] {
+        SettingsTab.Group.allCases.compactMap { group in
+            let tabs = group.tabs.filter { item in
+                query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || item.title.localizedCaseInsensitiveContains(query)
+            }
+            return tabs.isEmpty ? nil : (group, tabs)
         }
     }
 
@@ -1166,16 +1205,6 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            Toggle("Always Wake", isOn: Binding(
-                get: { store.settings.alwaysWake },
-                set: { store.setAlwaysWake($0) }
-            ))
-            Text(L(
-                "Açıkken Mac idle uyku ve ekran uykusuna geçmez. Kapak kapanırsa sistem yine uyuyabilir.",
-                "When on, the Mac won’t enter idle sleep or display sleep. Closing the lid can still put the system to sleep."
-            ))
-                .font(.caption)
-                .foregroundStyle(.secondary)
             Toggle(L("Açılışta başlat", "Launch at login"), isOn: Binding(
                 get: { store.settings.launchAtLogin },
                 set: { value in
@@ -1264,12 +1293,60 @@ struct SettingsView: View {
                 .textSelection(.enabled)
             Button(L("Güncellemeleri denetle", "Check for updates")) { UpdateController.check() }
                 .controlSize(.small)
+            Button(L("Yenilikler", "What's New")) { tab = .changelog }
+                .controlSize(.small)
             Text(L(
                 "Yeni sürüm olunca sorar. Kendiliğinden kurmaz.",
                 "It asks when a new version is available. It never installs on its own."
             ))
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
+        }
+    }
+
+    private var wakeTab: some View {
+        ScrollView {
+            KeepAwakePanel { tab = .focus }
+                .padding(20)
+                .frame(maxWidth: 520, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var changelogTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(L("Yenilikler", "What's New"))
+                    .font(.system(size: 20, weight: .semibold))
+                ForEach(Changelog.releases) { release in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text(release.version)
+                                .font(.system(size: 14, weight: .semibold))
+                            Spacer()
+                            Text(release.dateText)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        ForEach(release.notes, id: \.self) { note in
+                            HStack(alignment: .top, spacing: 8) {
+                                Text("•")
+                                    .foregroundStyle(.tertiary)
+                                Text(note)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: 640, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

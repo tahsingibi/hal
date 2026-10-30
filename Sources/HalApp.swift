@@ -30,6 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        VolumeMixer.shared.shutdown()
+        WakeController.shared.stop()
         DeviceModes.shared.shutdown()
         FocusTracker.shared.stop()
         // Bekleyen günlük kaydı diske yaz; son dakikaların odak süresi kaybolmasın.

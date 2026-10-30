@@ -166,6 +166,14 @@ struct AppSettings: Codable, Equatable, Sendable {
     var dockOffset: Double = 0.55
     var dockDisplayID: UInt32 = 0
     var alwaysWake: Bool = false
+    /// Sürekli açıkken diğer uyanık tutma koşulları aranmaz. 1.0.0 davranışı budur.
+    var wakeIndefinite: Bool = true
+    var wakeTimerEnabled: Bool = false
+    var wakeTimerMinutes: Int = 60
+    var wakeUntil: Date?
+    var wakeWhileApps: Bool = false
+    var wakeWhilePowerOrDisplay: Bool = false
+    var wakeWhileLidClosed: Bool = false
     var menuBarVisible: [String] = []
     var mirrorToOtherDisplays: Bool = false
     /// Açıkken kota ikonları tek bir özet ikonda toplanır.
@@ -275,6 +283,8 @@ struct AppSettings: Codable, Equatable, Sendable {
         case claudeEnabled, codexEnabled, fxEnabled, grokEnabled, customProviders
         case country, countryCode, state, city, latitude, longitude, method, school
         case launchAtLogin, expandOnHover, showSunrise, dockEdge, dockOffset, dockDisplayID, alwaysWake
+        case wakeIndefinite, wakeTimerEnabled, wakeTimerMinutes, wakeUntil
+        case wakeWhileApps, wakeWhilePowerOrDisplay, wakeWhileLidClosed
         case menuBarVisible, menuBarHidden, mirrorToOtherDisplays, menuBarCollapsed, menuBarClickOpens
         case notifyPrayer, notifyPrayerMinutes
         case notifyQuotaReset, notifyQuotaThreshold, notifyQuotaThresholdPercent
@@ -313,6 +323,13 @@ struct AppSettings: Codable, Equatable, Sendable {
         dockOffset = try c.decodeIfPresent(Double.self, forKey: .dockOffset) ?? 0.55
         dockDisplayID = try c.decodeIfPresent(UInt32.self, forKey: .dockDisplayID) ?? 0
         alwaysWake = try c.decodeIfPresent(Bool.self, forKey: .alwaysWake) ?? false
+        wakeIndefinite = try c.decodeIfPresent(Bool.self, forKey: .wakeIndefinite) ?? true
+        wakeTimerEnabled = try c.decodeIfPresent(Bool.self, forKey: .wakeTimerEnabled) ?? false
+        wakeTimerMinutes = try c.decodeIfPresent(Int.self, forKey: .wakeTimerMinutes) ?? 60
+        wakeUntil = try c.decodeIfPresent(Date.self, forKey: .wakeUntil)
+        wakeWhileApps = try c.decodeIfPresent(Bool.self, forKey: .wakeWhileApps) ?? false
+        wakeWhilePowerOrDisplay = try c.decodeIfPresent(Bool.self, forKey: .wakeWhilePowerOrDisplay) ?? false
+        wakeWhileLidClosed = try c.decodeIfPresent(Bool.self, forKey: .wakeWhileLidClosed) ?? false
         if let visible = try c.decodeIfPresent([String].self, forKey: .menuBarVisible) {
             menuBarVisible = visible
         } else {
@@ -380,6 +397,13 @@ struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(dockOffset, forKey: .dockOffset)
         try c.encode(dockDisplayID, forKey: .dockDisplayID)
         try c.encode(alwaysWake, forKey: .alwaysWake)
+        try c.encode(wakeIndefinite, forKey: .wakeIndefinite)
+        try c.encode(wakeTimerEnabled, forKey: .wakeTimerEnabled)
+        try c.encode(wakeTimerMinutes, forKey: .wakeTimerMinutes)
+        try c.encodeIfPresent(wakeUntil, forKey: .wakeUntil)
+        try c.encode(wakeWhileApps, forKey: .wakeWhileApps)
+        try c.encode(wakeWhilePowerOrDisplay, forKey: .wakeWhilePowerOrDisplay)
+        try c.encode(wakeWhileLidClosed, forKey: .wakeWhileLidClosed)
         try c.encode(menuBarVisible, forKey: .menuBarVisible)
         try c.encode(mirrorToOtherDisplays, forKey: .mirrorToOtherDisplays)
         try c.encode(menuBarCollapsed, forKey: .menuBarCollapsed)

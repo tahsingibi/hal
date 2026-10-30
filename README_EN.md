@@ -30,6 +30,7 @@ macOS 14+ · MIT License
 - [Privacy: what does the app read?](#privacy-what-does-the-app-read)
 - [Updates and releases](#updates-and-releases)
 - [Code signing](#code-signing)
+- [Release notes](#release-notes)
 - [Development](#development)
 - [About](#about)
 
@@ -40,13 +41,13 @@ macOS 14+ · MIT License
 - **Quotas:** Track Claude, Codex and Grok usage from the menu bar.
 - **Prayer times and tracking:** Next prayer, daily count and an unbroken streak.
 - **Automatic focus tracking:** Browser URLs are never read, and no permission is required.
-- **Two utilities:** A `yt-dlp`-based Downloader and Ports.
+- **Tools:** Downloader, Ports, Homebrew, a volume mixer and updates.
 - **Turkish and English UI;** the language switches instantly.
 - **Not sandboxed, fully local;** your data stays on your Mac.
 
 ## Quick start
 
-The ready-to-use build is `Hal-1.0.0.dmg` on [Releases](https://github.com/tahsingibi/hal/releases/latest).
+The ready-to-use build is the DMG on [Releases](https://github.com/tahsingibi/hal/releases/latest). The published release is **1.1.0** (31 October 2026).
 
 1. Open the DMG and drag **Hal** to **Applications**.
 2. First launch: System Settings → Privacy & Security → **Open Anyway**.
@@ -60,7 +61,7 @@ Building from the repo is the development path:
 open Hal.app
 ```
 
-`./build.sh --dmg` packs that same build as `dist/Hal-1.0.0.dmg` and writes a SHA-256 beside it. The project `Hal.app` stays signed with the development certificate. `Hal.app`, `.build` and `dist/` are build output and are not committed.
+`./build.sh --dmg` packs that same build as `dist/Hal-<version>.dmg` and writes a SHA-256 beside it. The project `Hal.app` stays signed with the development certificate. `Hal.app`, `.build` and `dist/` are build output and are not committed.
 
 **Naming:** The display name is **Hâl**. The file name, bundle identifier and data folder use the ASCII spelling **Hal**:
 
@@ -176,6 +177,18 @@ Lists listening TCP ports and the program holding them (`lsof`).
 - Stopping (`kill`): if the process is yours, it asks first and sends `SIGTERM`. If the process keeps listening, the next confirmation is `SIGKILL`.
 - System processes and other users' processes are shown as "system", with no button.
 
+### Homebrew
+
+Homebrew on this Mac. Formulae and casks can be searched, installed, removed and upgraded. `brew services` entries can be started or stopped. Removal and stopping ask first. If Homebrew is missing, nothing is installed; `brew.sh` is shown instead.
+
+### Sound
+
+Output volume and mute. Each app that is playing audio has its own level, up to 150%. At 100% the sound passes straight through. When the level changes, that app’s audio is read through a process tap and played back at the chosen gain. Nothing is recorded. A separate level needs the system audio recording permission.
+
+### Updates
+
+One list for macOS (`softwareupdate`), Homebrew (`brew outdated`) and apps that publish a Sparkle feed. App Store apps open through `mas` when it is installed, otherwise through the App Store page. Nothing installs on its own. A system update can restart the Mac.
+
 ## Notifications
 
 Settings › Notifications. Permission is requested when a notification is switched on. Each event is notified once.
@@ -192,7 +205,7 @@ Other notifications are off by default. Modules produce an `Alert` in `ModuleAle
 ### Other features
 
 - **Cleaning mode:** Covers the screen with a shield; this part works without permissions. Locking system shortcuts also requires Accessibility and Input Monitoring. Permission is requested with the button in Settings; it doesn't send you to System Settings on every launch.
-- **Always Wake:** While on, the Mac doesn't go into idle sleep or display sleep. If the lid is closed, the system may still sleep.
+- **Keep awake:** While Always is on, the Mac does not idle-sleep or sleep the display. Optional timer, while apps from the Focus list are frontmost, while on power or an external display, and while the lid is closed. The lid rule blocks idle sleep; macOS can still sleep on lid close when there is no external power and display.
 - **Launch at login:** Updated only when the switch in Settings changes.
 
 ## Privacy: what does the app read?
@@ -208,15 +221,19 @@ The app is **not** sandboxed. Everything it reads is listed here:
 | Calendar | EventKit after pressing the button | Not accessed without permission |
 | Cleaning shortcut lock | Accessibility and Input Monitoring | Only via the button in Settings |
 | Daily records | `~/Library/Application Support/Hal/` | The old `secrets.json` is not part of the quota path |
+| Keep awake | Frontmost app, power source, displays, lid | No network |
+| Homebrew | `brew` on this Mac | Network only if `brew` itself asks for it |
+| Volume mixer | Playing processes; a process tap when the level changes | Nothing is recorded |
+| Updates | `softwareupdate`, `brew`, `SUFeedURL` | App Store packages are not downloaded |
 
 ## Updates and releases
 
 A downloaded copy asks about new versions on its own; nothing installs automatically. It checks once a day, and you can also trigger it from Settings › About › *Check for updates*.
 
-- **Channel:** `https://raw.githubusercontent.com/tahsingibi/hal/main/appcast.xml`. The app reads this file from the repo. The zip goes on a GitHub Release; its address is the `enclosure` line inside `appcast.xml`. While the channel is empty, the app reports it is up to date.
+- **Channel:** `https://raw.githubusercontent.com/tahsingibi/hal/main/appcast.xml`. The app reads this file from the repo. The zip goes on a GitHub Release; its address is the `enclosure` line inside `appcast.xml`. The channel lists **1.1.0** (build 2).
 - **Sparkle:** The bundle ships with Sparkle 2.10.0. `build.sh` downloads the archive and verifies it with SHA-256.
 - **Keys:** The public key is in `SUPublicEDKey`. The private key is in the login keychain (account name `Hal`) and never enters the repo. If the key is deleted, updates after this version can no longer be signed.
-- **This release:** the DMG on the GitHub Release. While the channel is empty, the app reports it is up to date.
+- **This release:** the DMG and the Sparkle zip on the GitHub Release. An in-app check sees 1.1.0.
 - **A later in-app update:** `scripts/publish-update.sh` builds a zip only when a **Developer ID Application** certificate is present. The zip goes on a GitHub Release, and its address is written to the `enclosure` line inside `appcast.xml`. Notarization needs `NOTARY_KEYCHAIN_PROFILE`. `CFBundleVersion` increases strictly.
 - **Continuity:** The bundle identifier never changes, so `~/Library/Application Support/Hal` and preferences stay in place.
 
@@ -232,7 +249,7 @@ A downloaded copy asks about new versions on its own; nothing installs automatic
 
 ## Development
 
-Tabs and menu bar icons are derived from the `ModuleKind` registry in `Sources/Modules.swift`. `today` cannot be disabled. The Downloader and Ports sit outside this registry.
+Tabs and menu bar icons are derived from the `ModuleKind` registry in `Sources/Modules.swift`. `today` cannot be disabled. Downloader, Ports, Homebrew, Sound and Updates sit outside this registry.
 
 **To add a new module:**
 
@@ -245,9 +262,37 @@ Tabs and menu bar icons are derived from the `ModuleKind` registry in `Sources/M
 **Notes:**
 
 - Selection travels as a `DetailTarget` and is stored in the form `"usage/claude"`. Old records (`"prayer"`, a bare quota id) still resolve. Each module's last viewed page is remembered separately.
-- The Settings window uses a sidebar: App (General, Appearance, Notifications), Modules, Tools (Downloader, Ports) and About.
+- The Settings window uses a sidebar and search: App (General, Appearance, Notifications, Keep awake), Modules, Tools (Downloader, Ports, Homebrew, Sound, Updates), About and What's New.
 - The detail window's height follows the selected page's natural size and is capped by the screen, at 440 pt at most. A page that exceeds the cap scrolls internally.
 - The bundle's development region is marked `tr`; this does not lock the runtime language.
+
+## Release notes
+
+The About page in the app shows the same list.
+
+### 1.1.0 — 31 October 2026
+
+- Keep awake: a timer, while selected apps are frontmost, while on power or an external display, and while the lid is closed
+- Homebrew: search, install, remove, upgrade, start and stop services
+- Volume mixer: output level and a level per app
+- Updates: macOS, Homebrew and installed apps
+- Menu bar panel: icon rail, keep-awake durations, volume mixer and tools
+- What's New on its own page
+
+### 1.0.0 — 16 October 2026
+
+- Today board, week summary and end of day
+- Focus tracking
+- Quotas: Claude, Codex, Grok and custom sources
+- Prayer times and prayer tracking
+- Calendar
+- Health: water, protein, workouts, medication and supplements
+- Payments
+- Downloader (yt-dlp)
+- Ports
+- Cleaning mode
+- Keep awake: always on
+- Notifications, Turkish and English, Sparkle update prompt
 
 ## About
 

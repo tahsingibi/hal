@@ -19,6 +19,9 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     private var settingsWindow: NSWindow?
     private var downloaderWindow: NSWindow?
     private var portsWindow: NSWindow?
+    private var homebrewWindow: NSWindow?
+    private var mixerWindow: NSWindow?
+    private var updatesWindow: NSWindow?
     private var settingsTab: SettingsTab = .location
     private var replicas: [UInt32: Replica] = [:]
     private var cancellables: Set<AnyCancellable> = []
@@ -42,6 +45,9 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         settingsWindow?.title = L("Hâl Ayarları", "Hâl Settings")
         downloaderWindow?.title = L("Hâl · Video indir", "Hâl · Download video")
         portsWindow?.title = L("Hâl · Açık portlar", "Hâl · Open ports")
+        homebrewWindow?.title = "Hâl · Homebrew"
+        mixerWindow?.title = L("Hâl · Ses", "Hâl · Sound")
+        updatesWindow?.title = L("Hâl · Güncellemeler", "Hâl · Updates")
     }
 
     func openSettings(tab: SettingsTab = .location) {
@@ -61,8 +67,9 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         let controller = NSHostingController(rootView: SettingsView(initialTab: tab).environmentObject(store))
         let window = NSWindow(contentViewController: controller)
         window.title = L("Hâl Ayarları", "Hâl Settings")
-        window.styleMask = [.titled, .closable, .miniaturizable]
-        window.setContentSize(NSSize(width: 740, height: 700))
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.setContentSize(NSSize(width: 880, height: 680))
+        window.minSize = NSSize(width: 720, height: 520)
         window.center()
         window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
@@ -106,6 +113,44 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         portsWindow = window
+    }
+
+    func openHomebrew() {
+        present(&homebrewWindow, title: "Hâl · Homebrew", size: NSSize(width: 600, height: 560)) {
+            HomebrewUtilityView()
+        }
+    }
+
+    func openMixer() {
+        present(&mixerWindow, title: L("Hâl · Ses", "Hâl · Sound"), size: NSSize(width: 480, height: 520)) {
+            VolumeMixerUtilityView()
+        }
+    }
+
+    func openUpdates() {
+        present(&updatesWindow, title: L("Hâl · Güncellemeler", "Hâl · Updates"), size: NSSize(width: 600, height: 560)) {
+            UpdatesUtilityView()
+        }
+    }
+
+    private func present<V: View>(_ window: inout NSWindow?, title: String, size: NSSize, @ViewBuilder content: () -> V) {
+        if let window {
+            window.title = title
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let controller = NSHostingController(rootView: content().environmentObject(store))
+        let created = NSWindow(contentViewController: controller)
+        created.title = title
+        created.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        created.setContentSize(size)
+        created.minSize = NSSize(width: 440, height: 380)
+        created.center()
+        created.isReleasedWhenClosed = false
+        created.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        window = created
     }
 
     private func buildPopover() {
@@ -354,8 +399,11 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     private func showPopover(from view: NSView, id: String?) {
         if let id {
             store.focus(menuBarID: id)
-        } else if store.selection == nil {
-            store.restoreSelection()
+        } else {
+            store.boardToken += 1
+            if store.selection == nil {
+                store.restoreSelection()
+            }
         }
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
@@ -409,6 +457,9 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         let toolsMenu = NSMenu()
         toolsMenu.addItem(withTitle: L("Video indir…", "Download video…"), action: #selector(downloaderClicked), keyEquivalent: "")
         toolsMenu.addItem(withTitle: L("Açık portlar…", "Open ports…"), action: #selector(portsClicked), keyEquivalent: "")
+        toolsMenu.addItem(withTitle: "Homebrew…", action: #selector(homebrewClicked), keyEquivalent: "")
+        toolsMenu.addItem(withTitle: L("Ses…", "Sound…"), action: #selector(mixerClicked), keyEquivalent: "")
+        toolsMenu.addItem(withTitle: L("Güncellemeler…", "Updates…"), action: #selector(updatesClicked), keyEquivalent: "")
         toolsMenu.items.forEach { $0.target = self }
         tools.submenu = toolsMenu
         menu.addItem(tools)
@@ -418,7 +469,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
             action: #selector(toggleCleaning),
             keyEquivalent: ""
         )
-        menu.addItem(withTitle: store.settings.alwaysWake ? L("Always Wake: kapat", "Always Wake: turn off") : "Always Wake", action: #selector(toggleWake), keyEquivalent: "")
+        menu.addItem(withTitle: store.settings.alwaysWake ? L("Uyanık tutma: kapat", "Keep awake: turn off") : L("Uyanık tutma", "Keep awake"), action: #selector(toggleWake), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: L("Çıkış", "Quit"), action: #selector(quitClicked), keyEquivalent: "q")
         menu.items.forEach { $0.target = self }
@@ -431,6 +482,9 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     @objc private func settingsClicked() { openSettings() }
     @objc private func downloaderClicked() { openDownloader() }
     @objc private func portsClicked() { openPorts() }
+    @objc private func homebrewClicked() { openHomebrew() }
+    @objc private func mixerClicked() { openMixer() }
+    @objc private func updatesClicked() { openUpdates() }
     @objc private func toggleCleaning() { store.setCleaningMode(!store.cleaningMode) }
     @objc private func toggleWake() { store.setAlwaysWake(!store.settings.alwaysWake) }
     @objc private func quitClicked() { NSApp.terminate(nil) }

@@ -122,6 +122,7 @@ compile_arch() {
     -framework QuartzCore \
     -framework CoreGraphics \
     -framework IOKit \
+    -framework CoreAudio \
     -framework ApplicationServices \
     -framework Security \
     -framework UserNotifications \

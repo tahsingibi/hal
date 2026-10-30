@@ -56,10 +56,17 @@ final class FocusTracker {
     }
 
     private func matches(_ app: NSRunningApplication) -> Bool {
+        Self.matches(app, needles: apps)
+    }
+
+    /// Ad ya da bundle kimliği listedeki bir parçayı içeriyorsa eşleşir.
+    /// Uyanık tutma da aynı listeyi kullanır.
+    nonisolated static func matches(_ app: NSRunningApplication, needles: [String]) -> Bool {
         let name = (app.localizedName ?? "").lowercased()
         let bundle = (app.bundleIdentifier ?? "").lowercased()
-        return apps.contains { needle in
-            !needle.isEmpty && (name.contains(needle) || bundle.contains(needle))
+        return needles.contains { raw in
+            let needle = raw.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            return !needle.isEmpty && (name.contains(needle) || bundle.contains(needle))
         }
     }
 

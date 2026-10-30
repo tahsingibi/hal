@@ -6,6 +6,16 @@ struct DetailPopoverView: View {
     var onSettings: (SettingsTab) -> Void
     @State private var loginHint: String?
     @State private var pageHeights: [String: CGFloat] = [:]
+    @State private var pane: PopoverPane = .board
+    @State private var tool: PopoverTool?
+
+    private enum PopoverPane: Hashable {
+        case board, wake, sound, tools
+    }
+
+    private enum PopoverTool: Hashable {
+        case updates, homebrew, downloader, ports
+    }
 
     private var pages: [ModulePage] { store.allPages }
     private var selected: DetailTarget {
@@ -13,19 +23,19 @@ struct DetailPopoverView: View {
     }
     private var module: ModuleKind { store.selectedModule }
     private var pageWidth: CGFloat { MenuBarLayout.popoverPageWidth }
+    private var panelHeight: CGFloat { min(380, MenuBarLayout.popoverMaxContentHeight) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            header
-            if store.modules.count > 1 {
-                moduleTabs
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Spacer()
+                BrandMark(icon: .app, size: 22)
+                Spacer()
             }
-            // Modülün birden çok sayfası varsa aralarında geçiş şeridi.
-            if modulePages.count > 1 {
-                pageChips
-            }
-            pager
-            if let loginHint {
+            iconRail
+            sectionHeader
+            card
+            if let loginHint, pane == .board {
                 Text(loginHint)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
@@ -33,8 +43,266 @@ struct DetailPopoverView: View {
             }
             footer
         }
-        .padding(14)
+        .padding(12)
         .frame(width: MenuBarLayout.popoverWidth, alignment: .topLeading)
+        .onChange(of: store.boardToken) { _, _ in
+            pane = .board
+            tool = nil
+        }
+    }
+
+    private var iconRail: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 2) {
+                ForEach(store.modules) { item in
+                    railButton(item.symbol, help: item.title, selected: pane == .board && module == item) {
+                        pane = .board
+                        tool = nil
+                        store.selectModule(item)
+                    }
+                }
+                railButton("moon.zzz", help: L("Uyanık tut", "Keep awake"), selected: pane == .wake) {
+                    pane = .wake
+                    tool = nil
+                }
+                railButton("speaker.wave.2", help: L("Ses", "Sound"), selected: pane == .sound) {
+                    pane = .sound
+                    tool = nil
+                }
+                railButton("wrench.and.screwdriver", help: L("Araçlar", "Tools"), selected: pane == .tools) {
+                    pane = .tools
+                    tool = nil
+                }
+            }
+            .padding(3)
+        }
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func railButton(_ symbol: String, help: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .medium))
+                .frame(width: 28, height: 26)
+                .foregroundStyle(selected ? Color.white : Color.secondary)
+                .background(
+                    selected ? Color.accentColor : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                )
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    private var sectionHeader: some View {
+        HStack(spacing: 6) {
+            if pane == .tools, tool != nil {
+                Button {
+                    tool = nil
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            Text(sectionTitle)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.5)
+            Spacer()
+            if pane == .board {
+                iconButton(
+                    store.pinned ? "pin.fill" : "pin",
+                    help: store.pinned
+                        ? L("Sabit: pencere dışarı tıklayınca kapanmaz. Kaldırmak için tıkla.",
+                            "Pinned: window stays open when you click outside. Click to unpin.")
+                        : L("Sabitle: pencere dışarı tıklayınca kapanmasın",
+                            "Pin: keep window open when clicking outside"),
+                    active: store.pinned,
+                    action: store.togglePinned
+                )
+                iconButton("arrow.clockwise", help: L("Kotaları ve vakitleri yenile", "Refresh quotas and prayer times")) {
+                    loginHint = nil
+                    Task { await store.refresh() }
+                }
+            }
+        }
+    }
+
+    private var sectionTitle: String {
+        switch pane {
+        case .board:
+            return headerTitle
+        case .wake:
+            return L("Uyanık tut", "Keep awake")
+        case .sound:
+            return L("Ses mikseri", "Volume mixer")
+        case .tools:
+            return toolTitle ?? L("Araçlar", "Tools")
+        }
+    }
+
+    private var toolTitle: String? {
+        switch tool {
+        case .updates: return L("Güncellemeler", "Updates")
+        case .homebrew: return "Homebrew"
+        case .downloader: return L("İndirici", "Downloader")
+        case .ports: return L("Portlar", "Ports")
+        case nil: return nil
+        }
+    }
+
+    private var card: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            switch pane {
+            case .board:
+                if modulePages.count > 1 {
+                    pageChips
+                }
+                pager
+            case .wake:
+                KeepAwakePanel { onSettings(.focus) }
+            case .sound:
+                VolumeMixerPanel()
+                    .frame(maxHeight: panelHeight)
+            case .tools:
+                if let tool {
+                    if tool == .downloader {
+                        toolDetail(tool)
+                    } else {
+                        toolDetail(tool)
+                            .frame(height: panelHeight)
+                    }
+                } else {
+                    toolList
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var toolList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            toolRow("arrow.triangle.2.circlepath", L("Uygulama güncellemeleri", "App updates")) { tool = .updates }
+            toolDivider
+            toolRow("shippingbox", "Homebrew") { tool = .homebrew }
+            toolDivider
+            toolRow("arrow.down.circle", L("İndirici", "Downloader")) { tool = .downloader }
+            toolDivider
+            toolRow("network", L("Portlar", "Ports")) { tool = .ports }
+            toolDivider
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .frame(width: 18)
+                    .foregroundStyle(Color.accentColor)
+                Text(store.settings.resolvedCleaningMenuTitle)
+                    .font(.system(size: 13))
+                    .lineLimit(1)
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { store.cleaningMode },
+                    set: { store.setCleaningMode($0) }
+                ))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+            }
+            .padding(.vertical, 6)
+            if let message = store.cleaningMessage, store.cleaningMode || !DeviceModes.shared.accessibilityTrusted {
+                Text(message)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func toolRow(_ symbol: String, _ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .frame(width: 18)
+                    .foregroundStyle(Color.accentColor)
+                Text(title)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 7)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var toolDivider: some View {
+        Divider().padding(.leading, 26)
+    }
+
+    @ViewBuilder
+    private func toolDetail(_ tool: PopoverTool) -> some View {
+        switch tool {
+        case .updates:
+            UpdatesPanel()
+        case .homebrew:
+            HomebrewPanel()
+        case .downloader:
+            DownloaderForm(showsFolder: true)
+        case .ports:
+            PortsPanel(showsTitle: false)
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 8) {
+            Button {
+                onSettings(settingsDestination)
+            } label: {
+                Label(L("Ayarlar", "Settings"), systemImage: "gearshape")
+                    .frame(maxWidth: .infinity)
+            }
+            Button {
+                NSApp.terminate(nil)
+            } label: {
+                Label(L("Çık", "Quit"), systemImage: "power")
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.regular)
+    }
+
+    private var settingsDestination: SettingsTab {
+        switch pane {
+        case .board:
+            switch module {
+            case .today: return .appearance
+            case .focus: return .focus
+            case .usage: return .quota
+            case .prayer: return .worship
+            case .calendar: return .calendar
+            case .fitness: return .fitness
+            case .money: return .money
+            }
+        case .wake:
+            return .wake
+        case .sound:
+            return .mixer
+        case .tools:
+            switch tool {
+            case .updates: return .updates
+            case .homebrew: return .homebrew
+            case .downloader: return .downloader
+            case .ports: return .ports
+            case nil: return .updates
+            }
+        }
     }
 
     private var modulePages: [ModulePage] {
@@ -52,37 +320,6 @@ struct DetailPopoverView: View {
                 store.select(page.target)
             }
         )
-    }
-
-    private var header: some View {
-        HStack(spacing: 6) {
-            BrandMark(icon: headerBrand, size: 14)
-            Text(headerTitle)
-                .font(.system(size: 14, weight: .semibold))
-            Spacer()
-            iconButton(
-                store.pinned ? "pin.fill" : "pin",
-                help: store.pinned
-                    ? L("Sabit: pencere dışarı tıklayınca kapanmaz. Kaldırmak için tıkla.",
-                        "Pinned: window stays open when you click outside. Click to unpin.")
-                    : L("Sabitle: pencere dışarı tıklayınca kapanmasın",
-                        "Pin: keep window open when clicking outside"),
-                active: store.pinned,
-                action: store.togglePinned
-            )
-            iconButton("arrow.clockwise", help: L("Kotaları ve vakitleri yenile", "Refresh quotas and prayer times")) {
-                loginHint = nil
-                Task { await store.refresh() }
-            }
-            iconButton("gearshape", help: L("Ayarlar", "Settings")) { onSettings(.location) }
-        }
-    }
-
-    /// Modül sekmeleri; kayıttan türetilir, sabit liste yok.
-    private var moduleTabs: some View {
-        ModuleTabStrip(modules: store.modules, selected: module) { item in
-            store.selectModule(item)
-        }
     }
 
     /// Seçili modülün sayfaları arasında geçiş.
@@ -105,7 +342,7 @@ struct DetailPopoverView: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 5)
                             .background(
-                                on ? Color(hex: accentHex(for: page)).opacity(0.22) : Color.primary.opacity(0.05),
+                                on ? Color.accentColor.opacity(0.16) : Color.primary.opacity(0.04),
                                 in: Capsule()
                             )
                         }
@@ -121,11 +358,6 @@ struct DetailPopoverView: View {
                 }
             }
         }
-    }
-
-    private func accentHex(for page: ModulePage) -> String {
-        guard page.module == .usage, let item = page.item else { return "8A8A8A" }
-        return store.quotas.first { $0.id == item }?.accentHex ?? "8A8A8A"
     }
 
     /// Popover yüksekliği seçili sayfaya göre ayarlanır: kısa sayfa boşluk bırakmaz,
@@ -800,33 +1032,6 @@ struct DetailPopoverView: View {
         }
     }
 
-    private var footer: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Toggle(store.settings.resolvedCleaningMenuTitle, isOn: Binding(
-                    get: { store.cleaningMode },
-                    set: { store.setCleaningMode($0) }
-                ))
-                .toggleStyle(.checkbox)
-                .controlSize(.small)
-                Toggle("Always Wake", isOn: Binding(
-                    get: { store.settings.alwaysWake },
-                    set: { store.setAlwaysWake($0) }
-                ))
-                .toggleStyle(.checkbox)
-                .controlSize(.small)
-                Spacer()
-            }
-            .font(.system(size: 11))
-            if let message = store.cleaningMessage, store.cleaningMode || !DeviceModes.shared.accessibilityTrusted {
-                Text(message)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
     private var selectedPageModel: ModulePage? {
         pages.first { $0.target == selected }
     }
@@ -834,10 +1039,6 @@ struct DetailPopoverView: View {
     private var headerTitle: String {
         guard let page = selectedPageModel else { return module.title }
         return page.module == .usage ? Lf("%1$@ kotası", "%1$@ quota", page.title) : page.title
-    }
-
-    private var headerBrand: BrandIcon {
-        selectedPageModel?.icon ?? .app
     }
 
     private func iconButton(
@@ -865,287 +1066,6 @@ extension Notification.Name {
     static let halOpenSettings = Notification.Name("hal.openSettings")
 }
 
-
-/// Sekme şeridi. Sekmeler sıkışmaz; sığmayanlar trackpad kaydırması ya da
-/// sürükleme ile gelir. Seçili sekme yazısı sonradan genişler; yerleşim yeni
-/// çerçeveyi verince şerit o yazının tamamını kapsülün içine alır.
-private struct ModuleTabStrip: View {
-    let modules: [ModuleKind]
-    let selected: ModuleKind
-    let onSelect: (ModuleKind) -> Void
-
-    @State private var offset: CGFloat = 0
-    @State private var drag: CGFloat = 0
-    @State private var dragging = false
-    @State private var frames: [String: CGRect] = [:]
-    @State private var viewport: CGFloat = 0
-    /// Seçim değişince artar. Yerleşim, büyümüş çerçeveyi içeri alınca eşitlenir.
-    @State private var revealGeneration = 0
-    @State private var revealedGeneration = -1
-    @State private var revealedWidth: CGFloat = 0
-
-    /// Şeridin ideal genişliği. Arka plan ölçeri kırpılan genişliği verdiği için
-    /// sekmelerin kendi çerçevelerinden okunur; sağ boşluk sol boşluğa eşittir.
-    private var contentWidth: CGFloat {
-        let laid = frames.values.filter { $0.width > 1 }
-        guard laid.count == modules.count else { return 0 }
-        let maxX = laid.map(\.maxX).max() ?? 0
-        let minX = laid.map(\.minX).min() ?? 0
-        return maxX + minX
-    }
-
-    private var minOffset: CGFloat { min(0, viewport - contentWidth) }
-
-    /// Sürüklerken uçlarda lastik; bırakınca model konumu olduğu gibi durur.
-    private var shownOffset: CGFloat {
-        dragging || drag != 0 ? resist(offset + drag) : offset
-    }
-
-    var body: some View {
-        // Görünen alan, şeridin ideal genişliği değil, ebeveynin verdiği genişliktir.
-        // Aksi halde kapsül içerikle birlikte büyür ve popover sağ kenarı yazıyı keser.
-        GeometryReader { geo in
-            strip
-                .offset(x: shownOffset)
-                .frame(width: geo.size.width, height: 34, alignment: .leading)
-                .clipped()
-                .preference(key: TabViewportKey.self, value: geo.size.width)
-        }
-        .frame(height: 34)
-        .background(Color.primary.opacity(0.05), in: Capsule())
-        .clipShape(Capsule())
-        .contentShape(Capsule())
-        .simultaneousGesture(pan)
-        .background(TabWheelMonitor { applyWheel($0) })
-        .onPreferenceChange(TabFramesKey.self) { frames = $0; scheduleRevealIfNeeded() }
-        .onPreferenceChange(TabViewportKey.self) { viewport = $0; scheduleRevealIfNeeded() }
-        .onChange(of: selected) { _, _ in
-            revealGeneration += 1
-            revealedWidth = 0
-            scheduleRevealIfNeeded()
-        }
-    }
-
-    private var strip: some View {
-        UncompressedHStack(spacing: 4) {
-            ForEach(modules) { item in
-                tab(item)
-            }
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
-        .fixedSize(horizontal: true, vertical: false)
-        .coordinateSpace(name: "moduleTabs")
-    }
-
-    private func tab(_ item: ModuleKind) -> some View {
-        let on = selected == item
-        let compact = modules.count > 3 && !on
-        return Button {
-            onSelect(item)
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: item.symbol)
-                    .frame(width: 16, height: 16)
-                if !compact {
-                    Text(item.title)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                }
-            }
-            .font(.system(size: 12, weight: on ? .semibold : .medium))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .frame(minWidth: compact ? 36 : nil)
-            .fixedSize(horizontal: true, vertical: false)
-            .background(on ? Color.primary.opacity(0.12) : Color.clear, in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .help(item.title)
-        .background {
-            GeometryReader { geo in
-                Color.clear.preference(
-                    key: TabFramesKey.self,
-                    value: [item.id: geo.frame(in: .named("moduleTabs"))]
-                )
-            }
-        }
-    }
-
-    private var pan: some Gesture {
-        DragGesture(minimumDistance: 8, coordinateSpace: .local)
-            .onChanged { value in
-                dragging = true
-                drag = value.translation.width
-            }
-            .onEnded { value in
-                let flick = (value.predictedEndTranslation.width - value.translation.width) * 0.2
-                let next = resist(offset + value.translation.width + flick)
-                withAnimation(.easeOut(duration: 0.22)) {
-                    offset = min(0, max(minOffset, next))
-                    drag = 0
-                }
-                dragging = false
-                scheduleRevealIfNeeded()
-            }
-    }
-
-    private func applyWheel(_ delta: CGFloat) {
-        guard !dragging, minOffset < 0 else { return }
-        offset = min(0, max(minOffset, offset + delta))
-    }
-
-    private func scheduleRevealIfNeeded() {
-        DispatchQueue.main.async { revealAfterLayout() }
-    }
-
-    /// Seçili sekmenin çerçevesi değişince (ikonken yazı eklenince de) tamamını
-    /// görünür alanın içine alır. Kullanıcı daha sonra kaydırırsa geri çekmez.
-    private func revealAfterLayout() {
-        guard !dragging else { return }
-        guard viewport > 1, let frame = frames[selected.id], frame.width > 1 else { return }
-        // Genişlik henüz bu sekmeyi kapsamıyorsa ölçüm yarımdır; sonraki geçişi bekle.
-        guard contentWidth + 0.5 >= frame.maxX else { return }
-
-        let pending = revealedGeneration != revealGeneration
-        let grew = frame.width > revealedWidth + 1
-        if !pending && !grew { return }
-        if !pending && frameIsInside(frame, at: offset) {
-            revealedWidth = frame.width
-            return
-        }
-
-        let next = clampedOffset(placing: frame)
-        if abs(next - offset) > 0.5 {
-            withAnimation(.easeInOut(duration: 0.2)) { offset = next }
-        } else {
-            offset = next
-        }
-        revealedWidth = frame.width
-        if frameIsInside(frame, at: next) || frame.width + 8 >= viewport {
-            revealedGeneration = revealGeneration
-        }
-    }
-
-    /// Çerçeveler şeridin kendi koordinatında; `origin` görünen pencerenin solu.
-    private func frameIsInside(_ frame: CGRect, at origin: CGFloat) -> Bool {
-        let left = -origin
-        let right = left + viewport
-        return frame.minX >= left - 0.5 && frame.maxX <= right + 0.5
-    }
-
-    /// Seçili sekmeyi kapsül kenarından birkaç punto içeride tutar.
-    private func clampedOffset(placing frame: CGRect) -> CGFloat {
-        let inset: CGFloat = 4
-        let left = -offset
-        let right = left + viewport
-        var next = offset
-        if frame.width + inset * 2 >= viewport {
-            next = -(frame.minX - inset)
-        } else if frame.minX < left + inset {
-            next = -(frame.minX - inset)
-        } else if frame.maxX > right - inset {
-            next = -(frame.maxX - viewport + inset)
-        }
-        return min(0, max(minOffset, next))
-    }
-
-    private func resist(_ raw: CGFloat) -> CGFloat {
-        if raw > 0 { return raw * 0.3 }
-        if raw < minOffset { return minOffset + (raw - minOffset) * 0.3 }
-        return raw
-    }
-}
-
-/// Trackpad’in yatay kaydırmasını şeride bağlar. Tıklamayı yutmaz.
-private struct TabWheelMonitor: NSViewRepresentable {
-    var onDelta: (CGFloat) -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        context.coordinator.start(on: view)
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        context.coordinator.onDelta = onDelta
-    }
-
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSView, context: Context) -> CGSize? {
-        proposal.replacingUnspecifiedDimensions()
-    }
-
-    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
-        coordinator.stop()
-    }
-
-    final class Coordinator {
-        var onDelta: (CGFloat) -> Void = { _ in }
-        var monitor: Any?
-
-        func start(on view: NSView) {
-            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak view] event in
-                guard let view, let window = view.window, event.window == window else { return event }
-                let point = view.convert(event.locationInWindow, from: nil)
-                guard view.bounds.contains(point) else { return event }
-                let dx = event.scrollingDeltaX
-                guard abs(dx) > abs(event.scrollingDeltaY), abs(dx) > 0.01 else { return event }
-                let delta = event.hasPreciseScrollingDeltas ? dx : dx * 16
-                self.onDelta(delta)
-                return nil
-            }
-        }
-
-        func stop() {
-            if let monitor { NSEvent.removeMonitor(monitor) }
-            monitor = nil
-        }
-    }
-}
-
-private struct TabFramesKey: PreferenceKey {
-    static var defaultValue: [String: CGRect] = [:]
-    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
-        value.merge(nextValue(), uniquingKeysWith: { $1 })
-    }
-}
-
-private struct TabViewportKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
-
-/// Sekmeleri ideal genişliklerinde dizer. Dar bir öneri gelse bile çocuklar bölünmez.
-private struct UncompressedHStack: Layout {
-    var spacing: CGFloat = 4
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let sizes = idealSizes(subviews)
-        let width = sizes.reduce(CGFloat(0)) { $0 + $1.width } + spacing * CGFloat(max(sizes.count - 1, 0))
-        let height = sizes.map(\.height).max() ?? 0
-        return CGSize(width: width, height: height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let sizes = idealSizes(subviews)
-        var x = bounds.minX
-        for (subview, size) in zip(subviews, sizes) {
-            subview.place(
-                at: CGPoint(x: x, y: bounds.midY),
-                anchor: .leading,
-                proposal: ProposedViewSize(width: size.width, height: bounds.height)
-            )
-            x += size.width + spacing
-        }
-    }
-
-    private func idealSizes(_ subviews: Subviews) -> [CGSize] {
-        subviews.map { $0.sizeThatFits(.unspecified) }
-    }
-}
-
 /// Sayfa başına doğal yükseklik; popover'ı seçili sayfaya göre boyutlandırmak için.
 private struct PageHeightKey: PreferenceKey {
     static let defaultValue: [String: CGFloat] = [:]
@@ -1154,3 +1074,4 @@ private struct PageHeightKey: PreferenceKey {
         value.merge(nextValue()) { _, new in new }
     }
 }
+

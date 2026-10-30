@@ -30,6 +30,7 @@ macOS 14+ · MIT Lisansı
 - [Gizlilik: uygulama ne okur?](#gizlilik-uygulama-ne-okur)
 - [Güncelleme ve yayın](#güncelleme-ve-yayın)
 - [Kod imzası](#kod-imzası)
+- [Sürüm notları](#sürüm-notları)
 - [Geliştirme](#geliştirme)
 - [Hakkında](#hakkında)
 
@@ -40,13 +41,13 @@ macOS 14+ · MIT Lisansı
 - **Kotalar:** Claude, Codex ve Grok kullanımını menü çubuğundan izle.
 - **Namaz vakitleri ve takibi:** Sıradaki vakit, günlük sayı ve kesintisiz seri.
 - **Otomatik odak ölçümü:** Tarayıcı adresi okunmaz, izin istemez.
-- **İki yardımcı araç:** `yt-dlp` tabanlı İndirici ve Portlar.
+- **Araçlar:** İndirici, Portlar, Homebrew, ses mikseri ve güncellemeler.
 - **Türkçe ve İngilizce arayüz;** dil anında değişir.
 - **Sandbox'sız, yerel çalışır;** veriler Mac'inde kalır.
 
 ## Hızlı başlangıç
 
-Hazır kurulum [Releases](https://github.com/tahsingibi/hal/releases/latest) üzerindeki `Hal-1.0.0.dmg` dosyasıdır.
+Hazır kurulum [Releases](https://github.com/tahsingibi/hal/releases/latest) üzerindeki DMG dosyasıdır. Yayındaki sürüm **1.1.0** (31 Ekim 2026).
 
 1. DMG'yi aç, **Hal**'i **Applications** klasörüne sürükle.
 2. İlk açılış: Sistem Ayarları → Gizlilik ve Güvenlik → **Yine de Aç**.
@@ -60,21 +61,21 @@ Depodan derlemek geliştirme yoludur:
 open Hal.app
 ```
 
-`./build.sh --dmg` aynı derlemeyi `dist/Hal-1.0.0.dmg` olarak paketler ve yanına SHA-256 yazar. Projedeki `Hal.app` geliştirme sertifikasıyla imzalı kalır. `Hal.app`, `.build` ve `dist/` depoya girmez.
+`./build.sh --dmg` aynı derlemeyi `dist/Hal-<sürüm>.dmg` olarak paketler ve yanına SHA-256 yazar. Projedeki `Hal.app` geliştirme sertifikasıyla imzalı kalır. `Hal.app`, `.build` ve `dist/` depoya girmez.
 
 **Adlandırma:** Görünen ad **Hâl**'dir. Dosya adı, bundle kimliği ve veri klasörü Türkçe karaktersiz **Hal** kullanır:
 
-| Ne | Değer |
-| --- | --- |
-| Uygulama | `Hal.app` |
-| Bundle kimliği | `dev.sungur.Hal` |
-| Veri klasörü | `~/Library/Application Support/Hal` |
+| Ne             | Değer                               |
+| -------------- | ----------------------------------- |
+| Uygulama       | `Hal.app`                           |
+| Bundle kimliği | `dev.sungur.Hal`                    |
+| Veri klasörü   | `~/Library/Application Support/Hal` |
 
 **Marka:** Sağa açılan bir gösterge halkası ve içindeki konum noktası. Kaynak: `Resources/Icons/hal.svg`. Menü çubuğundaki çizim: `Sources/BrandIcons.swift`.
 
 ### Dil
 
-İlk açılışta Mac'in dili kullanılır: sistem dili Türkçe ise Türkçe, değilse İngilizce. Ayarlar › Genel › Dil'den *Sistem*, *Türkçe* veya *English* seçilebilir; seçim hemen uygulanır, yeniden açmak gerekmez.
+İlk açılışta Mac'in dili kullanılır: sistem dili Türkçe ise Türkçe, değilse İngilizce. Ayarlar › Genel › Dil'den _Sistem_, _Türkçe_ veya _English_ seçilebilir; seçim hemen uygulanır, yeniden açmak gerekmez.
 
 - Tarih ve gün adları seçilen dile uyar. Saat 24 saat biçimindedir.
 - Dosyaya ve ağa giden tarih anahtarları POSIX biçimindedir.
@@ -86,7 +87,7 @@ open Hal.app
 İlk açılışta yalnızca Hâl ikonu durur. Kota ve namaz ikonları Ayarlar › Görünüm'den tek tek açılır.
 
 - **Açma:** Tıklayınca detay penceresi açılır; üzerine gelmek açmaz.
-- **Hedef:** Varsayılan hedef *Bugün* panosudur. Ayarlar › Görünüm › Tıklama'dan "Tıklanan öğenin detayı" seçilirse ikon kendi sayfasını açar. Genel Hâl ikonu her durumda panoya gider. Pano kapalıysa her ikon temsil ettiği sayfaya düşer.
+- **Hedef:** Varsayılan hedef _Bugün_ panosudur. Ayarlar › Görünüm › Tıklama'dan "Tıklanan öğenin detayı" seçilirse ikon kendi sayfasını açar. Genel Hâl ikonu her durumda panoya gider. Pano kapalıysa her ikon temsil ettiği sayfaya düşer.
 - **Gezinme:** Pencere açıkken başka bir ikona tıklamak onu oraya taşır. Son bakılan sekme hatırlanır; yenileme seçimi değiştirmez.
 - **Sabitleme:** Başlıktaki raptiye pencereyi sabitler, dışarı tıklayınca kapanmaz. `Esc` kapatır.
 - **Sağ tık menüsü:** Yenile, ayarlar, araçlar, modlar, çıkış. İkinci ekran kopyası isteğe bağlıdır.
@@ -95,13 +96,13 @@ open Hal.app
 
 ## Modüller
 
-Yedi sekme vardır. *Bugün* kapatılamaz; diğerleri Ayarlar › Görünüm'den kapatılabilir. Kapanan modül yalnızca gizlenmez, veri kaynağı ve bildirimleri de durur. Sekmeler yatay kayar. Dörtten fazla modül açıkken başlık yalnızca seçili sekmede görünür.
+Yedi sekme vardır. _Bugün_ kapatılamaz; diğerleri Ayarlar › Görünüm'den kapatılabilir. Kapanan modül yalnızca gizlenmez, veri kaynağı ve bildirimleri de durur. Sekmeler yatay kayar. Dörtten fazla modül açıkken başlık yalnızca seçili sekmede görünür.
 
 ### Bugün
 
 Açık modüllerin panoya verdiği satırları toplar: derin çalışma, en boş kota, dolu veya okunamayan kotalar, sıradaki vakit, kılınan namaz ve seri, su ve protein. Satır; ikon, başlık, değer ve gerekirse tek satır açıklamadan oluşur. İlerleme çubuğu yoktur, oran değerin kendisindedir (çubuklar modül sayfalarındadır). Satıra tıklayınca ilgili sekmeye gidilir.
 
-- Hangi satırların görüneceği Ayarlar › Görünüm › *Bugün panosunda göster* altından seçilir. Satırı gizlemek modülü kapatmaz; sekme, ölçüm ve bildirimler yerinde kalır. Gizlenen satır akşam gün özetinde de yer almaz.
+- Hangi satırların görüneceği Ayarlar › Görünüm › _Bugün panosunda göster_ altından seçilir. Satırı gizlemek modülü kapatmaz; sekme, ölçüm ve bildirimler yerinde kalır. Gizlenen satır akşam gün özetinde de yer almaz.
 - Liste, o an ekranda olanlarla sınırlı değildir. Bir kez görülen satır `hal.summaryCatalog` kaydında kalır; modül kapanınca satırları listeden düşer. Başlığı gün içinde değişen satırlar sabit adla durur ("Sıradaki vakit", "Sonraki olay").
 - **Hafta:** Son yedi günün odak, antrenman, namaz ve beslenme özetini gösterir. Yeni veri toplamaz.
 - **Gün Sonu:** Son dört günün namaz, ilaç ve antrenman işaretlerini tek listede toplar. Bilgisayara geçilmeyen gün buradan tamamlanır. Dünden açık işaret varsa pano satırı da oraya götürür. Bugünün eksiği akşam görünür. Pencere bilerek kısa tutulur; seriyi sonsuza dek geriye doldurmak ölçümü bozar.
@@ -115,11 +116,11 @@ Açık modüllerin panoya verdiği satırları toplar: derin çalışma, en boş
 
 Claude, Codex ve Grok. Anahtarlar ilk kurulumda kapalıdır; CLI makinede olsa bile kotayı sen açarsın.
 
-| | Kaynak | Oturum |
-| --- | --- | --- |
-| Claude | `api.anthropic.com/api/oauth/usage` | Anahtar Zinciri, "Claude Code-credentials" |
-| Codex | `chatgpt.com/backend-api/wham/usage` | `~/.codex/auth.json` |
-| Grok | grok CLI fatura yanıtı | `~/.grok/auth.json` |
+|        | Kaynak                               | Oturum                                     |
+| ------ | ------------------------------------ | ------------------------------------------ |
+| Claude | `api.anthropic.com/api/oauth/usage`  | Anahtar Zinciri, "Claude Code-credentials" |
+| Codex  | `chatgpt.com/backend-api/wham/usage` | `~/.codex/auth.json`                       |
+| Grok   | grok CLI fatura yanıtı               | `~/.grok/auth.json`                        |
 
 - **Grok:** Haftalık sınır ve Grok Build bu faturadan okunur. Süre dolmak üzereyse aynı dosyadaki yenileme belirteciyle uzatılır ve dosyaya geri yazılır. Ön ödemeli bakiye ve yönetim anahtarı bu sayıya karışmaz.
 - **Oturum yoksa:** Claude veya Grok için pencereden Terminalde giriş açılır. Sohbet, oturum dizini ve tarayıcı çerezi okunmaz; Chrome Safe Storage sorulmaz.
@@ -161,11 +162,11 @@ Pano modülü değildirler. Ayarlar › Araçlar'dan ve menü çubuğu ikonuna s
 
 **Otomatik güncelleme:** Günde bir kez, ilk indirmeden önce `yt-dlp` güncellenir. İndirme çıkarıcı hatasıyla düşerse (`Unable to extract`, `nsig extraction failed`, `HTTP Error 403`) bir kez zorla güncellenip yeniden denenir. "Video unavailable" gibi hatalarda güncelleme denenmez. Yöntem kuruluma göredir:
 
-| Kurulum | Komut |
-| --- | --- |
-| Tek dosya derleme | `yt-dlp -U` |
-| Homebrew | `brew upgrade` |
-| Python betiği | `pipx upgrade` veya `pip install -U` |
+| Kurulum           | Komut                                |
+| ----------------- | ------------------------------------ |
+| Tek dosya derleme | `yt-dlp -U`                          |
+| Homebrew          | `brew upgrade`                       |
+| Python betiği     | `pipx upgrade` veya `pip install -U` |
 
 ### Portlar
 
@@ -175,6 +176,18 @@ Dinleyen TCP portlarını ve tutan programı listeler (`lsof`).
 - "Geliştirici" kapsülü varsayılan kapalıdır; açılınca yalnızca geliştirici sunucuları kalır.
 - Durdurma (`kill`): süreç seninse önce sorar ve `SIGTERM` gönderir. Süreç dinlemeye devam ederse sonraki onay `SIGKILL`'dir.
 - Sistem ve başka kullanıcının süreçleri "sistem" diye durur, düğme yoktur.
+
+### Homebrew
+
+Bu Mac’teki Homebrew. Formül ve cask aranır, kurulur, kaldırılır ve yükseltilir. `brew services` kayıtları başlatılır veya durdurulur. Kaldırma ve durdurma önce sorar. Homebrew yoksa kurulum yapılmaz; `brew.sh` gösterilir.
+
+### Ses
+
+Çıkış sesi ve sessize alma. Ses çıkaran her uygulamanın kendi seviyesi vardır; üst sınır 150%’dir. 100% iken ses doğrudan gider. Seviye değişince o uygulamanın sesi süreç tap’i ile okunur ve seçilen kazançla çalınır. Kayıt tutulmaz. Ayrı seviye için sistem sesi kaydı izni gerekir.
+
+### Güncellemeler
+
+Tek listede macOS (`softwareupdate`), Homebrew (`brew outdated`) ve Sparkle beslemesi olan uygulamalar. App Store uygulamaları, `mas` kuruluysa ondan, değilse App Store sayfasından açılır. Hiçbiri kendiliğinden kurulmaz. Sistem güncellemesi Mac’i yeniden başlatabilir.
 
 ## Bildirimler
 
@@ -192,31 +205,35 @@ Diğer bildirimler kapalı gelir. Modüller `ModuleAlerts.swift` içinde `Alert`
 ### Diğer özellikler
 
 - **Temizlik modu:** Ekranı kalkanla kapatır; bu kısım izinsiz de çalışır. Sistem kısayollarının da kilitlenmesi için Erişilebilirlik ve Giriş İzleme gerekir. İzin Ayarlar'daki düğmeyle istenir; her açılışta Sistem Ayarları'na yönlendirmez.
-- **Always Wake:** Açıkken Mac boşta uyku ve ekran uykusuna geçmez. Kapak kapanırsa sistem yine uyuyabilir.
+- **Uyanık tutma:** Sürekli açıkken Mac boşta uyku ve ekran uykusuna geçmez. İsteğe bağlı sayaç, Odak listesindeki uygulamalar öndeyken, prizde veya harici ekrandayken, kapak kapalıyken. Kapak kuralı boşta uykuyu keser; macOS, harici güç ve ekran yoksa kapağı kapatınca yine uyuyabilir.
 - **Açılışta başlat:** Yalnızca Ayarlar'daki anahtar değişince güncellenir.
 
 ## Gizlilik: uygulama ne okur?
 
 Uygulama sandbox'lı **değildir**. Okuduğu her şey burada:
 
-| Ne | Nereden / ne zaman | Not |
-| --- | --- | --- |
-| Claude kotası | Anahtar Zinciri, "Claude Code-credentials" | Sohbet okunmaz |
-| Codex kotası | `~/.codex/auth.json` | Oturum dizini ve sohbet gövdesi okunmaz |
-| Grok kotası | `~/.grok/auth.json` | Belirteç yenilenince aynı dosyaya yazılır. Çerez ve console.x.ai yönetim anahtarı istenmez |
-| Namaz vakitleri | Şehir seçilince `api.aladhan.com` | Koordinat seçilmeden istek yapılmaz |
-| Takvim | Düğmeye basılınca EventKit | İzin yokken erişilmez |
-| Temizlik kısayol kilidi | Erişilebilirlik ve Giriş İzleme | Yalnızca Ayarlar'daki düğmeyle |
-| Günlük kayıtlar | `~/Library/Application Support/Hal/` | Eski `secrets.json` kota yolunun parçası değildir |
+| Ne                      | Nereden / ne zaman                         | Not                                                                                        |
+| ----------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| Claude kotası           | Anahtar Zinciri, "Claude Code-credentials" | Sohbet okunmaz                                                                             |
+| Codex kotası            | `~/.codex/auth.json`                       | Oturum dizini ve sohbet gövdesi okunmaz                                                    |
+| Grok kotası             | `~/.grok/auth.json`                        | Belirteç yenilenince aynı dosyaya yazılır. Çerez ve console.x.ai yönetim anahtarı istenmez |
+| Namaz vakitleri         | Şehir seçilince `api.aladhan.com`          | Koordinat seçilmeden istek yapılmaz                                                        |
+| Takvim                  | Düğmeye basılınca EventKit                 | İzin yokken erişilmez                                                                      |
+| Temizlik kısayol kilidi | Erişilebilirlik ve Giriş İzleme            | Yalnızca Ayarlar'daki düğmeyle                                                             |
+| Günlük kayıtlar         | `~/Library/Application Support/Hal/`       | Eski `secrets.json` kota yolunun parçası değildir                                          |
+| Uyanık tutma            | Öndeki uygulama, güç kaynağı, ekranlar, kapak | Ağ yok                                                                                  |
+| Homebrew                | Bu Mac’teki `brew`                         | Ağ, yalnızca `brew` kendi isterse                                                          |
+| Ses mikseri             | Çalan süreçler; seviye değişince süreç tap’i | Kayıt tutulmaz                                                                           |
+| Güncellemeler           | `softwareupdate`, `brew`, `SUFeedURL`      | App Store paketleri indirilmez                                                             |
 
 ## Güncelleme ve yayın
 
-İndirilen kopya yeni sürümü kendisi sorar; kurulum kendiliğinden yapılmaz. Denetleme günde bir kez yapılır; Ayarlar › Hakkında › *Güncellemeleri denetle* ile de istenir.
+İndirilen kopya yeni sürümü kendisi sorar; kurulum kendiliğinden yapılmaz. Denetleme günde bir kez yapılır; Ayarlar › Hakkında › _Güncellemeleri denetle_ ile de istenir.
 
-- **Kanal:** `https://raw.githubusercontent.com/tahsingibi/hal/main/appcast.xml`. Uygulama repodaki bu dosyaya bakar. Zip, GitHub Release’e konur; indirme adresi `appcast.xml` içindeki `enclosure` satırındadır. Kanal boşken uygulama güncel der.
+- **Kanal:** `https://raw.githubusercontent.com/tahsingibi/hal/main/appcast.xml`. Uygulama repodaki bu dosyaya bakar. Zip, GitHub Release’e konur; indirme adresi `appcast.xml` içindeki `enclosure` satırındadır. Kanalda **1.1.0** (derleme 2) var.
 - **Sparkle:** Paket Sparkle 2.10.0 ile gelir. `build.sh` arşivi indirir ve SHA-256 ile doğrular.
 - **Anahtarlar:** Açık anahtar `SUPublicEDKey` içindedir. Gizli anahtar login anahtarlığındadır (hesap adı `Hal`) ve repoya girmez. Anahtar silinirse bu sürümden sonrakilere güncelleme imzalanamaz.
-- **Bu sürüm:** GitHub Release üzerindeki DMG. Kanal boşken uygulama güncel der.
+- **Bu sürüm:** GitHub Release üzerindeki DMG ve Sparkle zip’i. Uygulama içi denetleme 1.1.0’ı görür.
 - **Sonraki uygulama içi güncelleme:** `scripts/publish-update.sh` yalnızca **Developer ID Application** sertifikası varken zip üretir. Zip GitHub Release'e konur, adresi `appcast.xml` içindeki `enclosure` satırına yazılır. Noter için `NOTARY_KEYCHAIN_PROFILE` gerekir. `CFBundleVersion` katı biçimde artar.
 - **Sürekliliği korumak:** Bundle kimliği değişmez; `~/Library/Application Support/Hal` ve tercihler yerinde kalır.
 
@@ -232,7 +249,7 @@ Uygulama sandbox'lı **değildir**. Okuduğu her şey burada:
 
 ## Geliştirme
 
-Sekmeler ve menü çubuğu ikonları `Sources/Modules.swift` içindeki `ModuleKind` kaydından türer. `today` kapatılamaz. İndirici ve Portlar bu kaydın dışındadır.
+Sekmeler ve menü çubuğu ikonları `Sources/Modules.swift` içindeki `ModuleKind` kaydından türer. `today` kapatılamaz. İndirici, Portlar, Homebrew, Ses ve Güncellemeler bu kaydın dışındadır.
 
 **Yeni modül eklemek için:**
 
@@ -245,9 +262,37 @@ Sekmeler ve menü çubuğu ikonları `Sources/Modules.swift` içindeki `ModuleKi
 **Notlar:**
 
 - Seçim `DetailTarget` ile taşınır ve `"usage/claude"` biçiminde saklanır. Eski kayıtlar (`"prayer"`, düz kota kimliği) hâlâ çözülür. Her modülün son bakılan sayfası ayrı hatırlanır.
-- Ayarlar penceresi kenar çubuğu kullanır: Uygulama (Genel, Görünüm, Bildirimler), Modüller, Araçlar (İndirici, Portlar) ve Hakkında.
+- Ayarlar penceresi kenar çubuğu ve arama kullanır: Uygulama (Genel, Görünüm, Bildirimler, Uyanık tutma), Modüller, Araçlar (İndirici, Portlar, Homebrew, Ses, Güncellemeler), Hakkında ve Yenilikler.
 - Detay penceresinin yüksekliği seçili sayfanın doğal boyundan gelir ve ekrana göre en fazla 440 pt ile sınırlanır. Sınırı aşan sayfa kendi içinde kayar.
 - Paketin geliştirme bölgesi `tr` olarak işaretlidir; bu, çalışma anındaki dili kilitlemez.
+
+## Sürüm notları
+
+Uygulamadaki Hakkında sayfası aynı listeyi gösterir.
+
+### 1.1.0 — 31 Ekim 2026
+
+- Uyanık tutma: sayaç, seçili uygulamalar öndeyken, prizde veya harici ekrandayken, kapak kapalıyken
+- Homebrew: arama, kurma, kaldırma, yükseltme, servisi başlatma ve durdurma
+- Ses mikseri: çıkış sesi ve uygulama başına seviye
+- Güncellemeler: macOS, Homebrew ve yüklü uygulamalar
+- Menü çubuğu paneli: simge şeridi, uyanık tutma süreleri, ses mikseri ve araçlar
+- Yenilikler kendi sayfasında
+
+### 1.0.0 — 16 Ekim 2026
+
+- Bugün panosu, hafta özeti ve gün sonu
+- Odak ölçümü
+- Kotalar: Claude, Codex, Grok ve özel kaynak
+- İbadet ve namaz takibi
+- Takvim
+- Sağlık: su, protein, antrenman, ilaç ve takviye
+- Ödemeler
+- İndirici (yt-dlp)
+- Portlar
+- Temizlik modu
+- Uyanık tutma: sürekli
+- Bildirimler, Türkçe ve İngilizce, Sparkle ile sürüm sorusu
 
 ## Hakkında
 

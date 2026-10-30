@@ -12,6 +12,9 @@ final class AppStore: ObservableObject {
             if languageChanged {
                 Task { await refresh() }
             }
+            if Self.wakeSignature(oldValue) != Self.wakeSignature(settings) {
+                WakeController.shared.apply(settings)
+            }
         }
     }
     @Published var quotas: [QuotaGroup] = []
@@ -22,6 +25,8 @@ final class AppStore: ObservableObject {
     }
     @Published var isDragging = false
     @Published var selection: DetailTarget?
+    /// Menü çubuğu ikonundan her açılışta artar. Pano paneli buna dönünce modül sayfasına iner.
+    @Published var boardToken = 0
     @Published var lastQuotaID: String?
     @Published var now = Date()
     @Published var lastError: String?
@@ -60,6 +65,12 @@ final class AppStore: ObservableObject {
             UserDefaults.standard.set(true, forKey: "hal.migrated.asr.tr")
         }
         Language.apply(settings.language)
+        WakeController.shared.onPatch = { [weak self] body in
+            guard let self else { return }
+            var copy = self.settings
+            body(&copy)
+            if copy != self.settings { self.settings = copy }
+        }
         Task { await bootstrap() }
         startTick()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 180, repeats: true) { [weak self] _ in
@@ -908,6 +919,7 @@ final class AppStore: ObservableObject {
     /// Menü çubuğunda tıklanan öğenin kendi detayını açar.
     /// Genel ikon (`app`) hiçbir öğe görünür değilken durur; onda son sekmeye dönülür.
     func focus(menuBarID id: String) {
+        boardToken += 1
         if let target = clickTarget(forMenuBarID: id) {
             select(target)
         } else {
@@ -1268,8 +1280,24 @@ final class AppStore: ObservableObject {
     }
 
     func setAlwaysWake(_ on: Bool) {
-        settings.alwaysWake = on
-        DeviceModes.shared.setAlwaysWake(on)
+        var next = settings
+        next.alwaysWake = on
+        if !on { next.wakeUntil = nil }
+        settings = next
+    }
+
+    private static func wakeSignature(_ settings: AppSettings) -> String {
+        [
+            settings.alwaysWake ? "1" : "0",
+            settings.wakeIndefinite ? "1" : "0",
+            settings.wakeTimerEnabled ? "1" : "0",
+            String(settings.wakeTimerMinutes),
+            settings.wakeUntil.map { String($0.timeIntervalSince1970) } ?? "-",
+            settings.wakeWhileApps ? "1" : "0",
+            settings.wakeWhilePowerOrDisplay ? "1" : "0",
+            settings.wakeWhileLidClosed ? "1" : "0",
+            settings.focusApps.joined(separator: ",")
+        ].joined(separator: "|")
     }
 
     func applyFocusTracking() {
@@ -1281,7 +1309,8 @@ final class AppStore: ObservableObject {
 
     func applyPersistedModes() {
         applyFocusTracking()
-        DeviceModes.shared.setAlwaysWake(settings.alwaysWake)
+        WakeController.shared.apply(settings)
+        VolumeMixer.shared.restore()
         cleaningMode = false
         DeviceModes.shared.setCleaning(false)
     }

@@ -411,42 +411,68 @@ struct DownloaderForm: View {
 
     var body: some View {
         let tools = DownloadService.tools()
-        if !tools.ready {
-            Text(Lf("%1$@ bulunamadı.", "%1$@ not found.", tools.missing.joined(separator: L(" ve ", " and "))))
-            Text("brew install \(tools.missing.joined(separator: " "))")
-                .font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
-        } else {
-            HStack {
-                TextField(L("Video bağlantısı", "Video link"), text: $link).onSubmit(start)
-                Button { link = NSPasteboard.general.string(forType: .string) ?? "" } label: {
-                    Image(systemName: "doc.on.clipboard")
+        VStack(alignment: .leading, spacing: 10) {
+            if !tools.ready {
+                Text(Lf("%1$@ bulunamadı.", "%1$@ not found.", tools.missing.joined(separator: L(" ve ", " and "))))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("brew install \(tools.missing.joined(separator: " "))")
+                    .font(.system(size: 11, design: .monospaced))
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                HStack(spacing: 8) {
+                    TextField(L("Video bağlantısı", "Video link"), text: $link).onSubmit(start)
+                    Button { link = NSPasteboard.general.string(forType: .string) ?? "" } label: {
+                        Image(systemName: "doc.on.clipboard")
+                            .frame(width: 16, height: 16)
+                    }
+                    .buttonStyle(.borderless)
+                    .fixedSize()
+                    .help(L("Panodan yapıştır", "Paste from clipboard"))
                 }
-                .help(L("Panodan yapıştır", "Paste from clipboard"))
-            }
-            Picker(L("Biçim", "Format"), selection: $store.settings.downloadFormat) {
-                ForEach(DownloadService.Format.allCases) { format in
-                    Text(format == .mp3
-                         ? L("MP3 · yüksek kalite ses", "MP3 · high quality audio")
-                         : L("MP4 · en iyi video", "MP4 · best video")).tag(format)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L("Biçim", "Format"))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Picker(L("Biçim", "Format"), selection: $store.settings.downloadFormat) {
+                        ForEach(DownloadService.Format.allCases) { format in
+                            Text(format == .mp3 ? "MP3" : "MP4").tag(format)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    Text(store.settings.downloadFormat == .mp3
+                         ? L("Yüksek kalite ses", "High quality audio")
+                         : L("En iyi video", "Best video"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
                 }
-            }.pickerStyle(.segmented)
-            if showsFolder {
-                HStack {
-                    Label(store.settings.downloadDestination.path, systemImage: "folder")
-                        .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-                    Spacer()
-                    Button(L("Değiştir", "Change"), action: chooseFolder)
+                if showsFolder {
+                    HStack(spacing: 8) {
+                        Image(systemName: "folder")
+                            .foregroundStyle(.secondary)
+                        Text(store.settings.downloadDestination.path)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button(L("Değiştir", "Change"), action: chooseFolder)
+                            .controlSize(.small)
+                            .fixedSize()
+                    }
                 }
-            }
-            stateView
-            if !service.isRunning {
-                Button(action: start) {
-                    Label(L("İndir", "Download"), systemImage: "arrow.down.circle").frame(maxWidth: .infinity)
+                stateView
+                if !service.isRunning {
+                    Button(action: start) {
+                        Label(L("İndir", "Download"), systemImage: "arrow.down.circle").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(link.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(link.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder private var stateView: some View {

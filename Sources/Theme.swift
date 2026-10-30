@@ -21,8 +21,9 @@ enum MenuBarLayout {
     static let ringSymbol: CGFloat = 7
     static let itemSpacing: CGFloat = 8
     static let percentFont: CGFloat = 10
-    static let popoverWidth: CGFloat = 336
-    static let popoverPageWidth: CGFloat = 308
+    static let popoverWidth: CGFloat = 360
+    /// Dış boşluk 12+12 ve kart boşluğu 10+10.
+    static let popoverPageWidth: CGFloat = 316
     /// Sayfa içeriğinin alabileceği en fazla yükseklik. Üstünde sayfa kendi içinde kayar.
     /// Ekran alçaksa daha da kısalır; popover menü çubuğunun altına sığmalı.
     static var popoverMaxContentHeight: CGFloat {
