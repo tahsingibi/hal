@@ -31,6 +31,15 @@ struct AvailableUpdate: Identifiable, Equatable {
     }
 }
 
+struct UpdateOptions: Codable, Equatable {
+    var includeSystem = true
+    var includeBrew = true
+    var includeAppStore = true
+    var includeApps = true
+    /// 0: off, 1: daily, 7: weekly. Checks never install anything.
+    var intervalDays = 0
+}
+
 /// macOS, Homebrew ve yüklü uygulamaların güncellemeleri. Kurulum kendiliğinden başlamaz.
 @MainActor
 final class SystemUpdateService: ObservableObject {
@@ -41,33 +50,69 @@ final class SystemUpdateService: ObservableObject {
     @Published private(set) var applying = false
     @Published var log = ""
     @Published var summary = ""
+    @Published private(set) var lastChecked: Date?
+    @Published private(set) var sourceErrors: [String] = []
+    @Published var options: UpdateOptions {
+        didSet {
+            if let data = try? JSONEncoder().encode(options) { UserDefaults.standard.set(data, forKey: "hal.updateOptions") }
+            startBackgroundChecks()
+        }
+    }
+    private var backgroundTimer: Timer?
 
     private var generation = 0
 
-    private init() {}
+    private init() {
+        options = UserDefaults.standard.data(forKey: "hal.updateOptions")
+            .flatMap { try? JSONDecoder().decode(UpdateOptions.self, from: $0) } ?? UpdateOptions()
+        lastChecked = UserDefaults.standard.object(forKey: "hal.updates.lastChecked") as? Date
+    }
+
+    func startBackgroundChecks() {
+        backgroundTimer?.invalidate(); backgroundTimer = nil
+        guard [1, 7].contains(options.intervalDays) else { return }
+        let timer = Timer(timeInterval: 900, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, !self.scanning, !self.applying,
+                      Date().timeIntervalSince(self.lastChecked ?? .distantPast) >= Double(self.options.intervalDays) * 86400 else { return }
+                await self.scan()
+            }
+        }
+        timer.tolerance = 60
+        RunLoop.main.add(timer, forMode: .common)
+        backgroundTimer = timer
+    }
 
     func scan() async {
+        guard !scanning else { return }
+        let sources = options
         generation += 1
         let ticket = generation
         scanning = true
         items = []
         summary = L("Denetleniyor…", "Checking…")
         log = ""
+        sourceErrors = []
         defer {
             if ticket == generation { scanning = false }
         }
 
         var found: [AvailableUpdate] = []
-        found.append(contentsOf: await systemUpdates())
+        if sources.includeSystem { found.append(contentsOf: await systemUpdates()) }
+        items = found
         if ticket != generation { return }
-        found.append(contentsOf: await brewUpdates())
+        if sources.includeBrew { found.append(contentsOf: await brewUpdates()) }
+        items = found
         if ticket != generation { return }
-        found.append(contentsOf: await appUpdates())
+        if sources.includeAppStore || sources.includeApps { found.append(contentsOf: await appUpdates(includeStore: sources.includeAppStore, includeApps: sources.includeApps)) }
         if ticket != generation { return }
         items = found
-        summary = found.isEmpty
+        lastChecked = Date()
+        UserDefaults.standard.set(lastChecked, forKey: "hal.updates.lastChecked")
+        let count = found.filter { $0.token != "store" }.count
+        summary = count == 0
             ? L("Yeni güncelleme yok.", "No updates.")
-            : Lf("%1$d güncelleme", "%1$d updates", found.count)
+            : Lf("%1$d güncelleme", "%1$d updates", count)
     }
 
     func apply(_ item: AvailableUpdate) async {
@@ -107,6 +152,7 @@ final class SystemUpdateService: ObservableObject {
     private func systemUpdates() async -> [AvailableUpdate] {
         append("softwareupdate --list")
         guard let text = await capture("/usr/sbin/softwareupdate", ["--list"], timeout: 240) else {
+            sourceErrors.append(L("macOS güncellemeleri denetlenemedi.", "Could not check macOS updates."))
             append(L("Sistem güncellemeleri okunamadı.", "Could not read system updates."))
             return []
         }
@@ -141,6 +187,7 @@ final class SystemUpdateService: ObservableObject {
         guard let text = await capture(brew, ["outdated", "--greedy", "--json=v2"], timeout: 180, environment: Self.brewEnvironment()),
               let data = text.data(using: .utf8),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            sourceErrors.append(L("Homebrew güncellemeleri denetlenemedi.", "Could not check Homebrew updates."))
             append(L("Homebrew listesi okunamadı.", "Could not read the Homebrew list."))
             return []
         }
@@ -150,7 +197,7 @@ final class SystemUpdateService: ObservableObject {
         return items
     }
 
-    private func appUpdates() async -> [AvailableUpdate] {
+    private func appUpdates(includeStore: Bool, includeApps: Bool) async -> [AvailableUpdate] {
         let bundles = Self.appBundles()
         var sparkle: [(name: String, local: String, feed: URL, path: String)] = []
         var storeCount = 0
@@ -169,9 +216,9 @@ final class SystemUpdateService: ObservableObject {
         }
 
         var items: [AvailableUpdate] = []
-        if let mas = ProcessRunner.which("mas"), let text = await capture(mas, ["outdated"], timeout: 90) {
+        if includeStore, let mas = ProcessRunner.which("mas"), let text = await capture(mas, ["outdated"], timeout: 90) {
             items.append(contentsOf: Self.masRows(text))
-        } else if storeCount > 0 {
+        } else if includeStore && storeCount > 0 {
             items.append(AvailableUpdate(
                 id: "appstore:page",
                 origin: .appStore,
@@ -182,7 +229,7 @@ final class SystemUpdateService: ObservableObject {
             ))
         }
 
-        let limited = sparkle.prefix(40)
+        let limited = includeApps ? Array(sparkle.prefix(40)) : []
         await withTaskGroup(of: AvailableUpdate?.self) { group in
             for app in limited {
                 group.addTask {

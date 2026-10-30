@@ -79,8 +79,24 @@ open Hal.app
 
 - Tarih ve gün adları seçilen dile uyar. Saat 24 saat biçimindedir.
 - Dosyaya ve ağa giden tarih anahtarları POSIX biçimindedir.
-- Sparkle'ın güncelleme pencereleri İngilizce kalır.
+- Arayüz metinleri `Resources/tr.lproj` ve `Resources/en.lproj` içinde düzenlenebilir. Sistem izin açıklamaları da yerelleştirilmiştir; bu pencerelerde macOS’un dil seçimi geçerlidir.
+- Çeviri kapsamını ve biçim argümanlarını `python3 scripts/localize.py --check` doğrular. Yeni metinleri `--write` ile eklersin; mevcut çevirmen düzenlemeleri korunur.
 - Marka adları (Claude, Codex, Grok, Hâl, Always Wake) çevrilmez.
+
+## Özellikler ve ayarlar
+
+Vorssaint’in kategorili ayar ve özellik merkezi yaklaşımından esinlenen düzen, Hâl’in kendi modüllerini kullanır:
+
+- **Temel ayarlar:** Genel, Özellikler, İzinler, Görünüm ve Bildirimler.
+- **Çalışma ve enerji:** Odak, Kotalar, Uyanık tutma ve Ses.
+- **Kişisel:** İbadet, Takvim, Sağlık ve Ödemeler.
+- **Araçlar:** İndirici, Portlar, Homebrew ve Güncellemeler.
+
+Özellikler sayfasından modülleri tek tek açabilir veya **Çalışma**, **Günlük yaşam**, **Sade** gruplarını uygulayabilirsin. Kapalı modüller panelden ve ayar kenar çubuğundan kaldırılır; kayıtları korunur. Özellik merkezinden veya ayar aramasından tekrar ulaşabilirsin. Bugün her zaman açıktır.
+
+**Görünüm › Panel düzeni** bölümündeki yukarı/aşağı düğmeleri sekmeleri ve menü çubuğu öğelerini sıralar. Kompakt panel, üst gezinmeyi ve araç kartlarını küçültür. Menü panelinde Pano, Ses, Uyanık Tut ve Araçlar grupları bulunur; modül sekmeleri Pano altında yer alır. İzinler sayfası erişimin amacını ve ilgili ayarlara bağlantıları gösterir; kendiliğinden izin istemez.
+
+Uygulamayı yeniden açmak Özellikler penceresini öne getirir. `./build.sh` çıktıyı bu klasördeki `Hal.app` içine yazar; Applications’a kopyalamaz.
 
 ## Menü çubuğu
 
@@ -91,12 +107,12 @@ open Hal.app
 - **Gezinme:** Pencere açıkken başka bir ikona tıklamak onu oraya taşır. Son bakılan sekme hatırlanır; yenileme seçimi değiştirmez.
 - **Sabitleme:** Başlıktaki raptiye pencereyi sabitler, dışarı tıklayınca kapanmaz. `Esc` kapatır.
 - **Sağ tık menüsü:** Yenile, ayarlar, araçlar, modlar, çıkış. İkinci ekran kopyası isteğe bağlıdır.
-- **Tek ikonda toplama:** "Kotaları tek ikonda topla" açıksa kota ikonları tek özette birleşir ve en çok yeri kalan kotayı gösterir. Namaz saati ayrı ikon olarak kalır.
+- **Tek ikonda toplama:** "Kotaları tek ikonda topla" varsayılan olarak açıktır. Seçili sağlayıcıların marka ve kota değerleri 3,5 saniyede bir yerel SwiftUI geçişiyle sırayla gösterilir. Namaz saati ayrı ikon olarak kalır.
 - **Durum işaretleri:** Oturum yoksa `–`, okuma hatasında `!` görünür. Yüzde yoksa sayı üretilmez.
 
 ## Modüller
 
-Yedi sekme vardır. _Bugün_ kapatılamaz; diğerleri Ayarlar › Görünüm'den kapatılabilir. Kapanan modül yalnızca gizlenmez, veri kaynağı ve bildirimleri de durur. Sekmeler yatay kayar. Dörtten fazla modül açıkken başlık yalnızca seçili sekmede görünür.
+Yedi sekme vardır. _Bugün_ kapatılamaz; diğerleri Ayarlar › Özellikler'den kapatılabilir. Kapanan modül yalnızca gizlenmez, veri kaynağı ve bildirimleri de durur. Sekmeler yatay kayar. Dörtten fazla modül açıkken başlık yalnızca seçili sekmede görünür.
 
 ### Bugün
 
@@ -299,3 +315,27 @@ Uygulamadaki Hakkında sayfası aynı listeyi gösterir.
 Yazan: **Tahsin Sungur** · [sungur.dev](https://sungur.dev) · [@tahsingibi](https://x.com/tahsingibi)
 
 Lisans: [MIT](LICENSE)
+
+### Yerelleştirme ve ayar doğrulaması
+
+```bash
+python3 scripts/localize.py --check
+./scripts/verify-settings.sh
+```
+
+Doğrulama eski ayarların açılmasını, sıralama ve kompakt görünümün kayıt döngüsünü, tekrar eden/eski modül kimliklerini ve kaynak paketinden anlık dil değişimini kapsar. Kişisel ayarları okumaz veya değiştirmez. Yeni dinamik metinlerde Swift interpolasyonu yerine `Lf` ve konumlu `%1$@` / `%1$d` kullan. Aynı İngilizce metnin farklı Türkçe karşılıkları katalogda `English | Türkçe` bağlam anahtarlarıyla ayrılır.
+
+## Pencere değiştirici ve ekranlar
+
+**Ayarlar › Çalışma ve enerji › Pencere değiştirici** bölümünden etkinleştirilir. Varsayılan uygulama kısayolu **⌥Tab**, pencere kısayolu **⌥`**. Kısayol alanına tıkla ve istediğin birleşimi basarak kaydet; sabit seçenek listesi yoktur. Eski kısayol tercihleri yeni kayıt biçimine taşınır.
+
+- Değiştirici tuşunu basılı tut; Tab/Shift-Tab, oklar veya fareyle gezin; tuşu bırakınca seçilen pencere açılır. Hızlı basış görünme gecikmesini beklemeden geçiş yapar. Esc iptal eder. Elle açılan deneme panelinde Enter ile seçim yapılır.
+- Uygulamalar, öndeki/seçili uygulamanın pencereleri ve tüm pencereler için ayrı kısayollar vardır. ⌘Tab / ⌘` kaydedildiğinde ilgili macOS kısayolu geçici olarak devralınır. Özellik kapanınca, güvenli girişte ve uygulama çıkışında geri verilir; açılışta yarım kalmış kayıtlar onarılır.
+- Üç görünüm: yatay pencere önizleme şeridi, büyük simgeler ve basit liste. Boyut, sütun sayısı, ekran yerleşimi, görünme gecikmesi ve animasyon tercihleri ayarlanır.
+- Küçültülmüş pencereler normal sırada, sonda veya gizli tutulabilir. Tam ekran, geçerli ekran/masaüstü, uygulama başına bir giriş, penceresiz uygulamalar ve uygulamaya göre dışlama seçenekleri vardır.
+- W pencereyi normal şekilde kapatır, Q uygulamadan çıkmasını ister; kaydedilmemiş içerik varsa uygulamanın kendi penceresi karar verir. Orta tık yalnızca üzerine gelinen pencereyi kapatır. İsteğe bağlı S ile arama sabitlenir.
+- Erişilebilirlik olmadan özel kısayollarla uygulama görünümü kullanılır. Ekran Kaydı izni olmadan gerçek önizleme yerine uygulama simgesi gösterilir. Önizlemeler pencere kimliğiyle eşlenir; küçültülmüş pencerelerin yakalanması denenir. Küçük resimler yalnızca bellekte, en çok 48 adet tutulur; özellik kapatılınca veya bellek baskısında temizlenir. Dosyaya veya ağa yazılmaz. Uygulamaya göre yakalama duraklatılabilir.
+
+**Ekranlar** bölümünde parlaklık kontrolü ayrıca etkinleştirilir. Desteklenen ekranlarda donanım parlaklığı ayarlanır; diğer ekranlarda tıklamaları engellemeyen yazılımsal karartma uygulanır. Yazılımsal karartma ekranın güç tüketimini azaltmaz. Değişiklikler Mac uyuyunca, özellik kapatılınca veya Hâl normal şekilde kapanınca geri alınır. Donanım parlaklığı sonradan başka yerden değiştirilmişse bu değişiklik korunur. Karartma açılışta yeniden uygulanmaz.
+
+Ses aygıtları belirgin **Değiştir** menülerinden seçilir; uygulama seviyeleri ayrı kartlarda gösterilir. Homebrew’da Yüklü / Paket bul / Servisler ayrılır; bağımlılıklar gizlenebilir, ayrıntılar paket adına tıklayarak açılır. Yalnızca güncel olmayan paketlere güncelleme sunulur. Güncellemeler kaynak kartlarında toplanır; günlük veya haftalık arka plan denetimi isteğe bağlıdır ve kendiliğinden kurulum yapmaz. Ayar kenar çubuğu grupları açılıp kapanır; geri/ileri gezinme desteklenir.

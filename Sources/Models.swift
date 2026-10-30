@@ -177,7 +177,7 @@ struct AppSettings: Codable, Equatable, Sendable {
     var menuBarVisible: [String] = []
     var mirrorToOtherDisplays: Bool = false
     /// Açıkken kota ikonları tek bir özet ikonda toplanır.
-    var menuBarCollapsed: Bool = false
+    var menuBarCollapsed: Bool = true
     var menuBarClickOpens: MenuBarClickTarget = .today
     var notifyPrayer: Bool = false
     /// Vakitten kaç dakika önce bildirilsin; 0 ise vaktin tam saatinde.
@@ -232,6 +232,17 @@ struct AppSettings: Codable, Equatable, Sendable {
     var hiddenSummaryLines: [String] = []
     /// Yoksa sistem dili. Türkçe değilse İngilizce.
     var language: LanguageChoice = .system
+    var moduleOrder: [String] = []
+    var compactPanel: Bool = false
+    var switcher = SwitcherPreferences()
+    var displayControlsEnabled = false
+
+    /// Ignore stale IDs and duplicates, then append newly introduced modules.
+    var orderedModules: [ModuleKind] {
+        var seen = Set<ModuleKind>()
+        return (moduleOrder.compactMap(ModuleKind.init(rawValue:)) + ModuleKind.dashboardCases)
+            .filter { seen.insert($0).inserted }
+    }
 
     var downloadDestination: URL {
         let trimmed = downloadFolder.trimmingCharacters(in: .whitespaces)
@@ -296,7 +307,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         case trackWorkout, workoutPlan
         case trackMedication, medications, notifyMedication
         case downloadFormat, downloadFolder, waterStepML, proteinStepG, downloaderAutoUpdate
-        case hiddenSummaryLines, language
+        case hiddenSummaryLines, language, moduleOrder, compactPanel, switcher, displayControlsEnabled
     }
 
     init() {}
@@ -336,7 +347,7 @@ struct AppSettings: Codable, Equatable, Sendable {
             menuBarVisible = []
         }
         mirrorToOtherDisplays = try c.decodeIfPresent(Bool.self, forKey: .mirrorToOtherDisplays) ?? false
-        menuBarCollapsed = try c.decodeIfPresent(Bool.self, forKey: .menuBarCollapsed) ?? false
+        menuBarCollapsed = try c.decodeIfPresent(Bool.self, forKey: .menuBarCollapsed) ?? true
         menuBarClickOpens = try c.decodeIfPresent(MenuBarClickTarget.self, forKey: .menuBarClickOpens) ?? .today
         notifyPrayer = try c.decodeIfPresent(Bool.self, forKey: .notifyPrayer) ?? false
         notifyPrayerMinutes = try c.decodeIfPresent(Int.self, forKey: .notifyPrayerMinutes) ?? 10
@@ -371,6 +382,10 @@ struct AppSettings: Codable, Equatable, Sendable {
         trackWorkout = try c.decodeIfPresent(Bool.self, forKey: .trackWorkout) ?? false
         hiddenSummaryLines = try c.decodeIfPresent([String].self, forKey: .hiddenSummaryLines) ?? []
         language = try c.decodeIfPresent(LanguageChoice.self, forKey: .language) ?? .system
+        moduleOrder = try c.decodeIfPresent([String].self, forKey: .moduleOrder) ?? []
+        compactPanel = try c.decodeIfPresent(Bool.self, forKey: .compactPanel) ?? false
+        switcher = try c.decodeIfPresent(SwitcherPreferences.self, forKey: .switcher) ?? SwitcherPreferences()
+        displayControlsEnabled = try c.decodeIfPresent(Bool.self, forKey: .displayControlsEnabled) ?? false
         let storedPlan = try c.decodeIfPresent([String].self, forKey: .workoutPlan) ?? Workout.defaultPlan
         workoutPlan = storedPlan.count == 7 ? storedPlan : Workout.defaultPlan
     }
@@ -442,6 +457,10 @@ struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(workoutPlan, forKey: .workoutPlan)
         try c.encode(hiddenSummaryLines, forKey: .hiddenSummaryLines)
         try c.encode(language, forKey: .language)
+        try c.encode(moduleOrder, forKey: .moduleOrder)
+        try c.encode(compactPanel, forKey: .compactPanel)
+        try c.encode(switcher, forKey: .switcher)
+        try c.encode(displayControlsEnabled, forKey: .displayControlsEnabled)
     }
 
     func isModuleEnabled(_ module: ModuleKind) -> Bool {
@@ -450,7 +469,7 @@ struct AppSettings: Codable, Equatable, Sendable {
     }
 
     var enabledModules: [ModuleKind] {
-        ModuleKind.dashboardCases.filter(isModuleEnabled)
+        orderedModules.filter(isModuleEnabled)
     }
 
     var anyNotificationEnabled: Bool {

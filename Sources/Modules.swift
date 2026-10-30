@@ -10,7 +10,7 @@ import SwiftUI
 ///  3. `DetailPopoverView.page(for:)` — sayfanın görünümü
 ///  4. Modülün kendi dosyası (veri kaynağı) ve gerekiyorsa `ModuleAlerts` içinde uyarıları
 ///
-/// Sıralama `allCases` sırasıdır; sekmeler de menü çubuğu da bunu izler.
+/// Varsayılan sıra `dashboardCases`; kullanıcı sırası AppSettings'te saklanır.
 enum ModuleKind: String, CaseIterable, Codable, Identifiable, Sendable {
     case today
     case focus

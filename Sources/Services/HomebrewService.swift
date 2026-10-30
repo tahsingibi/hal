@@ -4,6 +4,11 @@ struct BrewPackage: Identifiable, Equatable {
     var name: String
     var version: String
     var cask: Bool
+    var summary: String = ""
+    var homepage: String = ""
+    var dependencies: [String] = []
+    var isDependency: Bool = false
+    var outdated: Bool = false
     var id: String { (cask ? "cask:" : "formula:") + name }
 }
 
@@ -42,16 +47,23 @@ final class HomebrewService: ObservableObject {
             error = L("Homebrew bulunamadı.", "Homebrew was not found.")
             return
         }
+        guard !busy else { return }
         busy = true
         defer { busy = false }
         error = nil
+        async let metadataText = Self.run(brew, ["info", "--json=v2", "--installed"])
         async let formulaText = Self.run(brew, ["list", "--formula", "--versions"])
         async let caskText = Self.run(brew, ["list", "--cask", "--versions"])
         async let serviceText = Self.run(brew, ["services", "list"])
-        let (formulaeResult, casksResult, servicesResult) = await (formulaText, caskText, serviceText)
+        let (formulaeResult, casksResult, servicesResult, metadata) = await (formulaText, caskText, serviceText, metadataText)
         if let text = formulaeResult { formulae = Self.packages(text, cask: false) }
         if let text = casksResult { casks = Self.packages(text, cask: true) }
         if let text = servicesResult { services = Self.serviceRows(text) }
+        if let metadata, let data = metadata.data(using: .utf8),
+           let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            formulae = Self.detailedPackages(root["formulae"], cask: false, fallback: formulae)
+            casks = Self.detailedPackages(root["casks"], cask: true, fallback: casks)
+        }
         if formulaeResult == nil && casksResult == nil {
             error = L("Kurulu liste okunamadı.", "Could not read the installed list.")
         }
@@ -59,7 +71,8 @@ final class HomebrewService: ObservableObject {
 
     func search(_ raw: String, cask: Bool) async {
         let query = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let brew = brewPath, !query.isEmpty else {
+        guard !busy else { return }
+        guard let brew = brewPath, Self.validName(query) != nil else {
             searchResults = []
             return
         }
@@ -80,7 +93,7 @@ final class HomebrewService: ObservableObject {
             return
         }
         await perform(L("Kuruluyor", "Installing"), brew, cask ? ["install", "--cask", name] : ["install", name], timeout: 900)
-        await refreshInstalled()
+        await refreshKeepingError()
     }
 
     func uninstall(_ package: BrewPackage, zap: Bool) async {
@@ -90,21 +103,27 @@ final class HomebrewService: ObservableObject {
         if zap && package.cask { args.append("--zap") }
         args.append(package.name)
         await perform(L("Kaldırılıyor", "Removing"), brew, args, timeout: 300)
-        await refreshInstalled()
+        await refreshKeepingError()
     }
 
     func upgrade(_ package: BrewPackage) async {
         guard let brew = brewPath else { return }
         let args = package.cask ? ["upgrade", "--cask", package.name] : ["upgrade", package.name]
         await perform(L("Yükseltiliyor", "Upgrading"), brew, args, timeout: 900)
-        await refreshInstalled()
+        await refreshKeepingError()
     }
 
     func setService(_ service: BrewServiceInfo, running: Bool) async {
         guard let brew = brewPath, Self.validName(service.name) != nil else { return }
         let verb = running ? "start" : "stop"
         await perform(running ? L("Başlatılıyor", "Starting") : L("Durduruluyor", "Stopping"), brew, ["services", verb, service.name], timeout: 60)
+        await refreshKeepingError()
+    }
+
+    private func refreshKeepingError() async {
+        let actionError = error
         await refreshInstalled()
+        if let actionError { error = actionError }
     }
 
     private func perform(_ title: String, _ brew: String, _ args: [String], timeout: TimeInterval) async {
@@ -145,6 +164,21 @@ final class HomebrewService: ObservableObject {
         let extras = CharacterSet(charactersIn: "/@+_.-")
         let ok = name.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) || extras.contains($0) }
         return ok ? name : nil
+    }
+
+    static func detailedPackages(_ raw: Any?, cask: Bool, fallback: [BrewPackage]) -> [BrewPackage] {
+        guard let rows = raw as? [[String: Any]] else { return fallback }
+        return rows.compactMap { row in
+            guard let name = (row[cask ? "token" : "name"] as? String) else { return nil }
+            let existing = fallback.first { $0.name == name }
+            let installed = row["installed"] as? [[String: Any]] ?? []
+            return BrewPackage(name: name, version: existing?.version ?? "", cask: cask,
+                               summary: row["desc"] as? String ?? "",
+                               homepage: row["homepage"] as? String ?? "",
+                               dependencies: row["dependencies"] as? [String] ?? [],
+                               isDependency: !cask && installed.first?["installed_on_request"] as? Bool == false,
+                               outdated: row["outdated"] as? Bool ?? false)
+        }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     private static func packages(_ text: String, cask: Bool) -> [BrewPackage] {

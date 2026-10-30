@@ -10,6 +10,9 @@ SDK="$(xcrun --show-sdk-path)"
 ARCH="$(uname -m)"
 MODULE_CACHE="$ROOT/.build/module-cache"
 
+# Validate before replacing the existing local build.
+python3 "$ROOT/scripts/localize.py" --check
+
 rm -rf "$APP"
 rm -rf "$ROOT/AppIcon.iconset"
 # Swift/Clang module caches embed absolute paths. On case-insensitive volumes the
@@ -74,6 +77,9 @@ fi
 
 cp "$ROOT/Info.plist" "$APP/Contents/Info.plist"
 cp "$ROOT/Resources/turkey.json" "$RES/turkey.json"
+for locale in "$ROOT/Resources/"*.lproj; do
+  ditto "$locale" "$RES/$(basename "$locale")"
+done
 
 ICON_DIR="$ROOT/Resources/Icons"
 mkdir -p "$RES/Icons"
@@ -126,7 +132,7 @@ compile_arch() {
     -framework ApplicationServices \
     -framework Security \
     -framework UserNotifications \
-    -framework EventKit \
+    -framework Carbon -framework ScreenCaptureKit -framework EventKit \
     -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
     -o "$out" \
     "${FILES[@]}" || return 1

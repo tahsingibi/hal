@@ -23,7 +23,7 @@ enum AppLanguage: String, Equatable, Sendable {
     case en
 }
 
-/// Çalışma anındaki dil. `Bundle` yerelleştirmesine bağlı değildir; menü çubuğu
+/// Çalışma anındaki dil. Yerelleştirme paketi açıkça seçilir; menü çubuğu
 /// uygulaması yeniden açılmadan değişebilir.
 enum Language {
     private static let lock = NSLock()
@@ -59,10 +59,33 @@ enum Language {
     static var locale: Locale {
         Locale(identifier: isEnglish ? "en_US" : "tr_TR")
     }
+
+    private static let bundles: [AppLanguage: Bundle] = {
+        var result: [AppLanguage: Bundle] = [:]
+        for language in [AppLanguage.tr, .en] {
+            if let path = Bundle.main.path(forResource: language.rawValue, ofType: "lproj"),
+               let bundle = Bundle(path: path) {
+                result[language] = bundle
+            }
+        }
+        return result
+    }()
+
+    static func text(turkish: String, english: String) -> String {
+        let language = resolved
+        let fallback = language == .en ? english : turkish
+        // Explicit bundle selection makes language changes immediate, independent
+        // of the OS bundle cache. Inline copy is a fallback for interpolated text.
+        guard let bundle = bundles[language] else { return fallback }
+        let contextKey = english + " | " + turkish
+        let contextual = bundle.localizedString(forKey: contextKey, value: nil, table: "Localizable")
+        if contextual != contextKey { return contextual }
+        return bundle.localizedString(forKey: english, value: fallback, table: "Localizable")
+    }
 }
 
 func L(_ tr: String, _ en: String) -> String {
-    Language.isEnglish ? en : tr
+    Language.text(turkish: tr, english: en)
 }
 
 /// İki dil de aynı argümanları alır. Sözcük sırası değişiyorsa her iki dizgede `%1$@` / `%2$d` kullan.

@@ -3,8 +3,8 @@ import SwiftUI
 
 enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
     // Uygulama
-    case general, appearance, notifications, wake
-    // Modüller — popover sekmeleriyle aynı sırada
+    case general, features, permissions, appearance, notifications, wake, switcher, displays
+    // Modüller ve araçlar
     case focus, quota, worship, calendar, fitness, money, downloader, ports, homebrew, mixer, updates
     case about, changelog
 
@@ -13,7 +13,8 @@ enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
     /// Kenar çubuğu grupları: uygulama ayarları ile modül ayarları karışmasın.
     enum Group: String, CaseIterable, Identifiable {
         case app = "Uygulama"
-        case modules = "Modüller"
+        case productivity = "Çalışma"
+        case modules = "Kişisel"
         case tools = "Araçlar"
         case info = ""
 
@@ -21,8 +22,9 @@ enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
 
         var title: String {
             switch self {
-            case .app: return L("Uygulama", "App")
-            case .modules: return L("Modüller", "Modules")
+            case .app: return L("Temel ayarlar", "Essentials")
+            case .productivity: return L("Çalışma ve enerji", "Work & energy")
+            case .modules: return L("Kişisel", "Personal")
             case .tools: return L("Araçlar", "Tools")
             case .info: return ""
             }
@@ -30,9 +32,10 @@ enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
 
         var tabs: [SettingsTab] {
             switch self {
-            case .app: return [.general, .appearance, .notifications, .wake]
-            case .modules: return [.focus, .quota, .worship, .calendar, .fitness, .money]
-            case .tools: return [.downloader, .ports, .homebrew, .mixer, .updates]
+            case .app: return [.general, .features, .permissions, .appearance, .notifications]
+            case .productivity: return [.focus, .quota, .wake, .switcher, .displays, .mixer]
+            case .modules: return [.worship, .calendar, .fitness, .money]
+            case .tools: return [.downloader, .ports, .homebrew, .updates]
             case .info: return [.about, .changelog]
             }
         }
@@ -41,9 +44,13 @@ enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
     var title: String {
         switch self {
         case .general: return L("Genel", "General")
+        case .features: return L("Özellikler", "Features")
+        case .permissions: return L("İzinler", "Permissions")
         case .appearance: return L("Görünüm", "Appearance")
         case .notifications: return L("Bildirimler", "Notifications")
         case .wake: return L("Uyanık tutma", "Keep awake")
+        case .switcher: return L("Pencere değiştirici", "Window switcher")
+        case .displays: return L("Ekranlar", "Displays")
         case .focus: return L("Odak", "Focus")
         case .quota: return L("Kotalar", "Quotas")
         case .worship: return L("İbadet", "Prayer")
@@ -63,9 +70,13 @@ enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
     var symbol: String {
         switch self {
         case .general: return "gearshape"
+        case .features: return "square.grid.2x2"
+        case .permissions: return "hand.raised"
         case .appearance: return "menubar.rectangle"
         case .notifications: return "bell"
         case .wake: return "moon.zzz"
+        case .switcher: return "macwindow.on.rectangle"
+        case .displays: return "sun.max"
         case .focus: return "scope"
         case .quota: return "gauge"
         case .worship: return "moon.stars"
@@ -91,6 +102,10 @@ struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
     @State private var tab: SettingsTab
     @State private var query = ""
+    @AppStorage("hal.settings.collapsedGroups") private var collapsedGroups = ""
+    @State private var backStack: [SettingsTab] = []
+    @State private var forwardStack: [SettingsTab] = []
+    @State private var traversingHistory = false
     @State private var draft = CustomProvider(name: "")
     @State private var adding = false
     @State private var legacyKeychainCount = 0
@@ -101,7 +116,7 @@ struct SettingsView: View {
 
     /// Belirli bir sekmeyle açılabilir; bildirimden ya da popover'dan doğrudan
     /// ilgili sayfaya götürmek için.
-    init(initialTab: SettingsTab = .general) {
+    init(initialTab: SettingsTab = .features) {
         _tab = State(initialValue: initialTab)
     }
 
@@ -114,14 +129,20 @@ struct SettingsView: View {
                     if entry.group.title.isEmpty || !query.isEmpty {
                         ForEach(entry.tabs) { row($0) }
                     } else {
-                        Section(entry.group.title) {
+                        Section(isExpanded: groupExpanded(entry.group)) {
                             ForEach(entry.tabs) { row($0) }
+                        } header: {
+                            Text(entry.group.title)
                         }
                     }
                 }
+                if filteredGroups.isEmpty {
+                    Text(L("Sonuç bulunamadı", "No results"))
+                        .foregroundStyle(.secondary)
+                }
             }
             .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 196, ideal: 220, max: 260)
+            .navigationSplitViewColumnWidth(min: 210, ideal: 228, max: 280)
             .safeAreaInset(edge: .top, spacing: 0) {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
@@ -137,17 +158,75 @@ struct SettingsView: View {
         } detail: {
             // Form kendi içinde kayar. Dıştan bir ScrollView'a sarmak iç içe kaydırma
             // doğurup alan tıklamalarını ve metin girişini engelliyordu.
-            content
-                .navigationTitle(tab.title)
+            VStack(spacing: 0) {
+                HStack(spacing: 9) {
+                    Image(systemName: tab.symbol).font(.system(size: 16)).foregroundStyle(.secondary)
+                    Text(tab.title).font(.system(size: 18, weight: .semibold))
+                    Spacer()
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 22)
+                .padding(.bottom, 6)
+                if let module = tab.module, !store.settings.isModuleEnabled(module) {
+                    HStack {
+                        Text(L("Bu modül kapalı. Tercihlerin korunuyor.", "This module is disabled. Your preferences are kept."))
+                            .font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button(L("Etkinleştir", "Enable")) { store.setModule(module, enabled: true) }
+                    }
+                    .padding(14)
+                    .background(Color.accentColor.opacity(0.06))
+                }
+                content.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .background(Color(nsColor: .windowBackgroundColor))
+            .navigationTitle(L("Hâl Ayarları", "Hâl Settings"))
         }
-        .frame(minWidth: 760, minHeight: 540)
+        .frame(minWidth: 860, minHeight: 620)
+        .environment(\.locale, Language.locale)
+        .toolbar {
+            ToolbarItemGroup(placement: .navigation) {
+                Button { navigateBack() } label: { Image(systemName: "chevron.left") }
+                    .disabled(backStack.isEmpty).help(L("Geri", "Back"))
+                Button { navigateForward() } label: { Image(systemName: "chevron.right") }
+                    .disabled(forwardStack.isEmpty).help(L("İleri", "Forward"))
+            }
+        }
+        .onChange(of: tab) { old, _ in
+            if traversingHistory { traversingHistory = false }
+            else { backStack.append(old); forwardStack = [] }
+        }
         .onAppear {
             legacyKeychainCount = SecretStore.legacyItemCount()
         }
     }
 
+    private func groupExpanded(_ group: SettingsTab.Group) -> Binding<Bool> {
+        Binding(get: { !collapsedGroups.split(separator: ",").contains(Substring(group.rawValue)) }, set: { expanded in
+            var collapsed = Set(collapsedGroups.split(separator: ",").map(String.init))
+            if expanded { collapsed.remove(group.rawValue) } else { collapsed.insert(group.rawValue) }
+            collapsedGroups = collapsed.sorted().joined(separator: ",")
+        })
+    }
+
+    private func navigateBack() {
+        guard let previous = backStack.popLast() else { return }
+        forwardStack.append(tab); traversingHistory = true; tab = previous
+    }
+
+    private func navigateForward() {
+        guard let next = forwardStack.popLast() else { return }
+        backStack.append(tab); traversingHistory = true; tab = next
+    }
+
     private func row(_ item: SettingsTab) -> some View {
-        Label(item.title, systemImage: item.symbol).tag(item)
+        Label {
+            Text(item.title)
+        } icon: {
+            Image(systemName: item.symbol).foregroundStyle(Color.accentColor)
+        }
+        .padding(.vertical, 3)
+        .tag(item)
     }
 
     private var sidebarSelection: Binding<SettingsTab?> {
@@ -163,9 +242,13 @@ struct SettingsView: View {
     private var content: some View {
         switch tab {
         case .general: generalTab
+        case .features: FeatureHubView(onSettings: { tab = $0 })
+        case .permissions: PermissionsView(onSettings: { tab = $0 })
         case .appearance: menuBarTab
         case .notifications: notificationsTab
         case .wake: wakeTab
+        case .switcher: WindowSwitcherSettingsView()
+        case .displays: DisplaySettingsView()
         case .focus: focusTab
         case .quota: quotaTab
         case .worship: worshipTab
@@ -174,9 +257,9 @@ struct SettingsView: View {
         case .money: moneyTab
         case .downloader: downloaderTab
         case .ports: portsTab
-        case .homebrew: HomebrewPanel().padding(20)
-        case .mixer: VolumeMixerPanel().padding(20)
-        case .updates: UpdatesPanel().padding(20)
+        case .homebrew: HomebrewPanel().padding(24)
+        case .mixer: VolumeMixerPanel().padding(24)
+        case .updates: UpdatesPanel().padding(24)
         case .about: aboutTab
         case .changelog: changelogTab
         }
@@ -185,8 +268,11 @@ struct SettingsView: View {
     private var filteredGroups: [(group: SettingsTab.Group, tabs: [SettingsTab])] {
         SettingsTab.Group.allCases.compactMap { group in
             let tabs = group.tabs.filter { item in
-                query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    || item.title.localizedCaseInsensitiveContains(query)
+                let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+                if term.isEmpty {
+                    return item.module.map { store.settings.isModuleEnabled($0) } ?? true
+                }
+                return "\(item.title) \(item.subtitle) \(item.rawValue)".localizedCaseInsensitiveContains(term)
             }
             return tabs.isEmpty ? nil : (group, tabs)
         }
@@ -887,20 +973,26 @@ struct SettingsView: View {
 
     private var menuBarTab: some View {
         Form {
-            Section(L("Modüller", "Modules")) {
-                ForEach(ModuleKind.dashboardCases) { module in
-                    Toggle(module.title, isOn: Binding(
-                        get: { store.settings.isModuleEnabled(module) },
-                        set: { store.setModule(module, enabled: $0) }
-                    ))
-                    .disabled(!module.canDisable)
+            Section(L("Panel düzeni", "Panel layout")) {
+                Toggle(L("Kompakt panel", "Compact panel"), isOn: $store.settings.compactPanel)
+                Text(L("Sıra, panel sekmelerine ve menü çubuğuna uygulanır.", "Order applies to panel tabs and menu bar items."))
+                    .font(.caption).foregroundStyle(.secondary)
+                ForEach(Array(store.settings.orderedModules.enumerated()), id: \.element.id) { index, module in
+                    HStack {
+                        Label(module.title, systemImage: module.symbol)
+                        if !store.settings.isModuleEnabled(module) {
+                            Text(L("Kapalı", "Off")).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button { store.moveModule(module, by: -1) } label: { Image(systemName: "chevron.up") }
+                            .disabled(index == 0)
+                            .help(L("Yukarı taşı", "Move up"))
+                        Button { store.moveModule(module, by: 1) } label: { Image(systemName: "chevron.down") }
+                            .disabled(index == store.settings.orderedModules.count - 1)
+                            .help(L("Aşağı taşı", "Move down"))
+                    }
                 }
-                Text(L(
-                    "Bugün panosu uygulamanın merkezi olduğu için açık kalır. Diğer modüller kapanınca veri kaynakları ve bildirimleri de durur.",
-                    "The Today board stays on because it’s the center of the app. When other modules turn off, their data sources and notifications stop too."
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Button(L("Özellikleri yönet", "Manage features")) { tab = .features }
             }
             Section(L("Bugün panosunda göster", "Show on Today board")) {
                 if store.summaryCatalog.isEmpty {
@@ -962,8 +1054,8 @@ struct SettingsView: View {
             Section(L("Yerleşim", "Layout")) {
                 Toggle(L("Kotaları tek ikonda topla", "Collapse quotas into one icon"), isOn: $store.settings.menuBarCollapsed)
                 Text(L(
-                    "Açıkken kota ikonları tek bir ikona iner ve yalnızca en dolu kota görünür (ör. Grok %100). Tıklayınca o kotanın detayı açılır, diğerleri sekmelerde durur. Namaz saati ayrı ikon olarak kalır.",
-                    "When on, quota icons collapse into one and only the fullest quota is shown (e.g. Grok 100%). Clicking opens that quota’s detail; the others stay in the tabs. Prayer time remains its own icon."
+                    "Seçili tüm kota sağlayıcıları aynı ikonda 3,5 saniyede bir sırayla gösterilir. Marka ve kota birlikte animasyonla değişir. Namaz saati ayrı kalır.",
+                    "All selected quota providers cycle through one icon every 3.5 seconds. The brand and quota animate together. Prayer time stays separate."
                 ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -1307,8 +1399,8 @@ struct SettingsView: View {
     private var wakeTab: some View {
         ScrollView {
             KeepAwakePanel { tab = .focus }
-                .padding(20)
-                .frame(maxWidth: 520, alignment: .leading)
+                .padding(24)
+                .frame(maxWidth: 760, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }

@@ -12,12 +12,21 @@ final class AppStore: ObservableObject {
             if languageChanged {
                 Task { await refresh() }
             }
+            if oldValue.switcher != settings.switcher { WindowSwitcher.shared.apply(settings.switcher) }
+            if oldValue.displayControlsEnabled != settings.displayControlsEnabled { DisplayController.shared.apply(enabled: settings.displayControlsEnabled) }
             if Self.wakeSignature(oldValue) != Self.wakeSignature(settings) {
                 WakeController.shared.apply(settings)
             }
         }
     }
     @Published var quotas: [QuotaGroup] = []
+    /// Display-only rotation; never changes the Today board’s best-quota metric.
+    var menuBarQuotaID: String?
+    var rotatingQuota: QuotaGroup? {
+        let ids = visibleQuotaIDs
+        return quotas.first { $0.id == menuBarQuotaID && ids.contains($0.id) }
+            ?? ids.lazy.compactMap { id in self.quotas.first { $0.id == id } }.first
+    }
     @Published var prayers: PrayerDay?
     @Published var expanded = false
     @Published var pinned = UserDefaults.standard.bool(forKey: "hal.pinned") {
@@ -52,6 +61,11 @@ final class AppStore: ObservableObject {
 
     init() {
         self.settings = Self.loadSettings()
+        if !UserDefaults.standard.bool(forKey: "hal.migrated.quotaTicker.v1") {
+            self.settings.menuBarCollapsed = true
+            if let data = try? JSONEncoder().encode(self.settings) { UserDefaults.standard.set(data, forKey: "hal.settings") }
+            UserDefaults.standard.set(true, forKey: "hal.migrated.quotaTicker.v1")
+        }
         self.settings.expandOnHover = false
         self.lastQuotaID = UserDefaults.standard.string(forKey: "hal.lastQuota")
         self.lastPageByModule = Self.loadLastPages().mapValues { Optional($0) }
@@ -832,6 +846,7 @@ final class AppStore: ObservableObject {
     /// varsayılan panodur, ama "tıklanan öğe" seçilirse o modüle gider.
     /// Pano modülü kapalıysa her koşulda öğenin kendisine düşer.
     func clickTarget(forMenuBarID id: String) -> DetailTarget? {
+        if id == MenuBarSummary.id && settings.menuBarClickOpens == .item { return target(forMenuBarID: id) }
         let generalIcon = id == BrandIcon.appItemID || id == MenuBarSummary.id
         // Pano kapalıysa herkes temsil ettiği şeye gider; özet ikon da
         // gösterdiği kotaya düşer, "son sekme"ye değil.
@@ -847,7 +862,7 @@ final class AppStore: ObservableObject {
     /// Menü çubuğu kimliğinden **temsil ettiği** hedefe. Modül kaydından türetilir.
     func target(forMenuBarID id: String) -> DetailTarget? {
         if id == MenuBarSummary.id {
-            return summaryQuota.map { DetailTarget(module: .usage, item: $0.id) }
+            return rotatingQuota.map { DetailTarget(module: .usage, item: $0.id) }
         }
         if id == BrandIcon.appItemID { return nil }
         for module in modules {
@@ -887,6 +902,21 @@ final class AppStore: ObservableObject {
         reconcileSelection()
         if module == .focus { applyFocusTracking() }
         Task { await refresh() }
+    }
+
+    func applyModules(_ enabled: Set<ModuleKind>) {
+        settings.disabledModules = ModuleKind.dashboardCases
+            .filter { $0.canDisable && !enabled.contains($0) }.map(\.rawValue)
+        reconcileSelection()
+        applyFocusTracking()
+        Task { await refresh() }
+    }
+
+    func moveModule(_ module: ModuleKind, by offset: Int) {
+        var order = settings.orderedModules
+        guard let index = order.firstIndex(of: module), order.indices.contains(index + offset) else { return }
+        order.swapAt(index, index + offset)
+        settings.moduleOrder = order.map(\.rawValue)
     }
 
     func isMenuBarVisible(_ id: String) -> Bool {
@@ -1091,7 +1121,7 @@ final class AppStore: ObservableObject {
         }
         // Modül sırasına göre, modül içinde ilk görülme sırası korunarak.
         // Swift'in `sort`'u kararlı değil; sırayı indeksle kendimiz taşıyoruz.
-        let order = ModuleKind.dashboardCases
+        let order = settings.orderedModules
         known = known.enumerated().sorted { left, right in
             let l = order.firstIndex(of: left.element.module) ?? order.count
             let r = order.firstIndex(of: right.element.module) ?? order.count
@@ -1311,6 +1341,8 @@ final class AppStore: ObservableObject {
         applyFocusTracking()
         WakeController.shared.apply(settings)
         VolumeMixer.shared.restore()
+        WindowSwitcher.shared.apply(settings.switcher)
+        DisplayController.shared.apply(enabled: settings.displayControlsEnabled)
         cleaningMode = false
         DeviceModes.shared.setCleaning(false)
     }

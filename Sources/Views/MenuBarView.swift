@@ -14,7 +14,7 @@ struct DetailPopoverView: View {
     }
 
     private enum PopoverTool: Hashable {
-        case updates, homebrew, downloader, ports
+        case updates, homebrew, downloader, ports, displays
     }
 
     private var pages: [ModulePage] { store.allPages }
@@ -26,13 +26,14 @@ struct DetailPopoverView: View {
     private var panelHeight: CGFloat { min(380, MenuBarLayout.popoverMaxContentHeight) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: store.settings.compactPanel ? 7 : 12) {
             HStack {
                 Spacer()
                 BrandMark(icon: .app, size: 22)
                 Spacer()
             }
             iconRail
+            if pane == .board { moduleRail }
             sectionHeader
             card
             if let loginHint, pane == .board {
@@ -45,6 +46,9 @@ struct DetailPopoverView: View {
         }
         .padding(12)
         .frame(width: MenuBarLayout.popoverWidth, alignment: .topLeading)
+        .environment(\.locale, Language.locale)
+        .environment(\.toolPresentation, .menu)
+        .background(Color(nsColor: .windowBackgroundColor))
         .onChange(of: store.boardToken) { _, _ in
             pane = .board
             tool = nil
@@ -52,46 +56,53 @@ struct DetailPopoverView: View {
     }
 
     private var iconRail: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 2) {
-                ForEach(store.modules) { item in
-                    railButton(item.symbol, help: item.title, selected: pane == .board && module == item) {
-                        pane = .board
-                        tool = nil
-                        store.selectModule(item)
+        HStack(spacing: 4) {
+            railButton("square.grid.2x2", help: L("Pano", "Board"), selected: pane == .board) { pane = .board; tool = nil }
+            railButton("speaker.wave.2", help: L("Ses", "Sound"), selected: pane == .sound) { pane = .sound; tool = nil }
+            railButton("moon.zzz", help: L("Uyanık tut", "Keep awake"), selected: pane == .wake) { pane = .wake; tool = nil }
+            railButton("wrench.and.screwdriver", help: L("Araçlar", "Tools"), selected: pane == .tools) { pane = .tools; tool = nil }
+        }
+        .padding(5)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).strokeBorder(Color.primary.opacity(0.07)))
+    }
+
+    private var moduleRail: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 5) {
+                    ForEach(store.modules) { item in
+                        Button { store.selectModule(item) } label: {
+                            Label(item.title, systemImage: item.symbol)
+                                .font(.system(size: 11, weight: .medium))
+                                .padding(.horizontal, 9).padding(.vertical, 6)
+                                .foregroundStyle(module == item ? Color.accentColor : Color.secondary)
+                                .background(module == item ? Color.accentColor.opacity(0.12) : Color.clear, in: Capsule())
+                        }.buttonStyle(.plain).id(item.id)
                     }
                 }
-                railButton("moon.zzz", help: L("Uyanık tut", "Keep awake"), selected: pane == .wake) {
-                    pane = .wake
-                    tool = nil
-                }
-                railButton("speaker.wave.2", help: L("Ses", "Sound"), selected: pane == .sound) {
-                    pane = .sound
-                    tool = nil
-                }
-                railButton("wrench.and.screwdriver", help: L("Araçlar", "Tools"), selected: pane == .tools) {
-                    pane = .tools
-                    tool = nil
-                }
             }
-            .padding(3)
+            .onAppear { proxy.scrollTo(module.id, anchor: .center) }
+            .onChange(of: module) { _, value in withAnimation { proxy.scrollTo(value.id, anchor: .center) } }
         }
-        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func railButton(_ symbol: String, help: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 13, weight: .medium))
-                .frame(width: 28, height: 26)
-                .foregroundStyle(selected ? Color.white : Color.secondary)
-                .background(
-                    selected ? Color.accentColor : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-                )
+            VStack(spacing: 4) {
+                Image(systemName: symbol).font(.system(size: 17, weight: .medium))
+
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 34)
+            .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+            .background(selected ? Color.accentColor.opacity(0.14) : Color.clear, in: RoundedRectangle(cornerRadius: 9))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(help)
+        .accessibilityLabel(help)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private var sectionHeader: some View {
@@ -112,6 +123,7 @@ struct DetailPopoverView: View {
                 .textCase(.uppercase)
                 .tracking(0.5)
             Spacer()
+            iconButton("slider.horizontal.3", help: L("Bölüm ayarları", "Section settings")) { onSettings(settingsDestination) }
             if pane == .board {
                 iconButton(
                     store.pinned ? "pin.fill" : "pin",
@@ -150,6 +162,7 @@ struct DetailPopoverView: View {
         case .homebrew: return "Homebrew"
         case .downloader: return L("İndirici", "Downloader")
         case .ports: return L("Portlar", "Ports")
+        case .displays: return L("Ekran parlaklığı", "Display brightness")
         case nil: return nil
         }
     }
@@ -163,7 +176,7 @@ struct DetailPopoverView: View {
                 }
                 pager
             case .wake:
-                KeepAwakePanel { onSettings(.focus) }
+                ScrollView { KeepAwakePanel { onSettings(.focus) } }.frame(maxHeight: panelHeight)
             case .sound:
                 VolumeMixerPanel()
                     .frame(maxHeight: panelHeight)
@@ -180,21 +193,20 @@ struct DetailPopoverView: View {
                 }
             }
         }
-        .padding(10)
+        .padding(pane == .tools && tool == nil ? 0 : pane == .board ? 10 : 12)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(Color.primary.opacity(pane == .tools && tool == nil ? 0 : 0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var toolList: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        ScrollView {
+        VStack(alignment: .leading, spacing: store.settings.compactPanel ? 6 : 9) {
             toolRow("arrow.triangle.2.circlepath", L("Uygulama güncellemeleri", "App updates")) { tool = .updates }
-            toolDivider
             toolRow("shippingbox", "Homebrew") { tool = .homebrew }
-            toolDivider
             toolRow("arrow.down.circle", L("İndirici", "Downloader")) { tool = .downloader }
-            toolDivider
             toolRow("network", L("Portlar", "Ports")) { tool = .ports }
-            toolDivider
+            toolRow("sun.max", L("Ekran parlaklığı", "Display brightness")) { tool = .displays }
+            toolRow("macwindow.on.rectangle", L("Pencere değiştirici", "Window switcher")) { onSettings(.switcher) }
             HStack(spacing: 8) {
                 Image(systemName: "sparkles")
                     .frame(width: 18)
@@ -211,7 +223,8 @@ struct DetailPopoverView: View {
                 .toggleStyle(.switch)
                 .controlSize(.small)
             }
-            .padding(.vertical, 6)
+            .padding(12)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 11))
             if let message = store.cleaningMessage, store.cleaningMode || !DeviceModes.shared.accessibilityTrusted {
                 Text(message)
                     .font(.system(size: 11))
@@ -219,6 +232,8 @@ struct DetailPopoverView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        }
+        .frame(height: store.settings.compactPanel ? 300 : min(410, MenuBarLayout.popoverMaxContentHeight))
     }
 
     private func toolRow(_ symbol: String, _ title: String, action: @escaping () -> Void) -> some View {
@@ -227,22 +242,35 @@ struct DetailPopoverView: View {
                 Image(systemName: symbol)
                     .frame(width: 18)
                     .foregroundStyle(Color.accentColor)
-                Text(title)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.primary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary)
+                    if !store.settings.compactPanel {
+                        Text(toolDescription(symbol)).font(.system(size: 11)).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.tertiary)
             }
-            .padding(.vertical, 7)
+            .padding(12)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 11))
+            .overlay(RoundedRectangle(cornerRadius: 11).strokeBorder(Color.primary.opacity(0.08)))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 
-    private var toolDivider: some View {
-        Divider().padding(.leading, 26)
+    private func toolDescription(_ symbol: String) -> String {
+        switch symbol {
+        case "arrow.triangle.2.circlepath": return SettingsTab.updates.subtitle
+        case "shippingbox": return SettingsTab.homebrew.subtitle
+        case "arrow.down.circle": return SettingsTab.downloader.subtitle
+        case "sun.max": return SettingsTab.displays.subtitle
+        case "macwindow.on.rectangle": return SettingsTab.switcher.subtitle
+        default: return SettingsTab.ports.subtitle
+        }
     }
 
     @ViewBuilder
@@ -256,6 +284,8 @@ struct DetailPopoverView: View {
             DownloaderForm(showsFolder: true)
         case .ports:
             PortsPanel(showsTitle: false)
+        case .displays:
+            DisplayQuickPanel { onSettings(.displays) }
         }
     }
 
@@ -275,14 +305,14 @@ struct DetailPopoverView: View {
             }
         }
         .buttonStyle(.bordered)
-        .controlSize(.regular)
+        .controlSize(.small)
     }
 
     private var settingsDestination: SettingsTab {
         switch pane {
         case .board:
             switch module {
-            case .today: return .appearance
+            case .today: return .features
             case .focus: return .focus
             case .usage: return .quota
             case .prayer: return .worship
@@ -300,7 +330,8 @@ struct DetailPopoverView: View {
             case .homebrew: return .homebrew
             case .downloader: return .downloader
             case .ports: return .ports
-            case nil: return .updates
+            case .displays: return .displays
+            case nil: return .features
             }
         }
     }

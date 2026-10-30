@@ -299,3 +299,35 @@ The About page in the app shows the same list.
 Written by **Tahsin Sungur** · [sungur.dev](https://sungur.dev) · [@tahsingibi](https://x.com/tahsingibi)
 
 License: [MIT](LICENSE)
+## Feature hub and localization resources
+
+Settings now groups Essentials, Work & energy, Personal and Tools. The Features page offers individual module switches and Work, Daily life and Minimal presets. Disabled modules stop loading and disappear from panel navigation and the settings sidebar; settings search and the hub still let you configure them. Today always stays enabled.
+
+Appearance → Panel layout saves module order and a compact panel option. The panel groups Board, Sound, Keep awake and Tools, with descriptive utility cards. Permissions explains access and links to the related settings without requesting access automatically. Reopening the app brings the Features window forward.
+
+Editable translations and native permission descriptions live in `Resources/en.lproj` and `Resources/tr.lproj`. Language changes apply immediately; macOS chooses the language for its permission dialogs. `python3 scripts/localize.py --write` adds missing literal L/Lf entries while preserving translator edits. Prefer positional Lf placeholders to Swift interpolation for new dynamic copy. Context keys (`English | Türkçe`) distinguish identical English text with different Turkish meanings.
+
+```sh
+python3 scripts/localize.py --check
+./scripts/verify-settings.sh
+```
+
+The checks cover older settings, module ordering and persistence, duplicate/stale IDs, format placeholders and runtime language switching from bundled resources. They do not read or modify personal preferences. `./build.sh` builds `Hal.app` in this folder without copying it to Applications.
+
+## Window switcher and display brightness
+
+Enable the switcher from Settings → Work & energy → Window switcher. The default global shortcut is Control-Option-Tab; Option-Tab and Control-Shift-Space are alternatives. It preserves macOS Command-Tab. Navigate with Tab/Shift-Tab or arrows, press Return to activate, and Escape to dismiss. Search by app or window name. Three layouts are available: previews, large icons and a simple list.
+
+Without Accessibility access it lists running apps. With access it lists and restores individual windows, including minimized windows. Preview images additionally require Screen Recording access, requested only through the permission button. Images stay in memory and are cleared when the panel closes; minimized windows use app icons. Current-display and windowless-app filters are available. The feature starts disabled.
+
+Display controls are separately enabled in Settings → Displays. Supported displays use hardware brightness; other displays get click-through software dimming, clearly labeled. Software dimming does not reduce display power consumption. Changes are restored on sleep, disabling the feature or normal app termination. Hardware changes subsequently made elsewhere are preserved. Dimming is never reapplied on launch.
+
+The settings sidebar now has collapsible groups and back/forward navigation. Sound devices use visible Change menus with separate app cards. Homebrew separates Installed, Find packages and Services, with optional dependencies and expandable package details. Updates are grouped by source, with optional daily/weekly background checks that never install automatically.
+
+### Hold-to-switch update
+
+The switcher now uses a dedicated keyboard event-tap thread, background window enumeration and a screen-sized thumbnail strip. Shortcut fields record arbitrary modifier/key combinations. Apps, current-app windows and all windows have separate shortcuts. Holding the modifiers opens a session, Tab/Shift-Tab and arrows navigate, and releasing commits. Fast taps can switch without flashing the panel; Escape cancels. W requests a normal window close and Q requests app termination. Optional S pins search. Record Command-Tab or Command-backtick to opt into temporary native-key takeover; native keys are restored on disable, secure input and quit, with recovery bookkeeping for interrupted exits.
+
+Options include appearance delay, columns, preview sizes, minimal previews, per-app grouping, minimized ordering, fullscreen/display/desktop filters, placement and app exclusions. Thumbnails are matched by window ID and cached only in RAM (48 maximum), including minimized-window capture where supported. The list layout does not capture the screen. Old shortcut records migrate without losing the user's chosen keys.
+
+Collapsed quotas are now enabled by default and cycle selected providers every 3.5 seconds with a native SwiftUI transition. The menu mixer uses flat rows with native device pickers and sliders; it does not reuse nested settings cards.

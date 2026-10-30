@@ -62,159 +62,218 @@ struct HomebrewUtilityView: View {
 
 struct HomebrewPanel: View {
     @ObservedObject private var brew = HomebrewService.shared
-    @State private var installName = ""
-    @State private var cask = false
     @State private var query = ""
+    @State private var mode = 0
+    @State private var kind = 0
+    @State private var cask = false
+    @State private var showDependencies = false
+    @State private var selected: String?
     @State private var pending: BrewPackage?
     @State private var stopPending: BrewServiceInfo?
+    @State private var searched = false
+
+    private var installed: [BrewPackage] { brew.formulae + brew.casks }
+    private var visible: [BrewPackage] {
+        installed.filter { package in
+            (kind == 0 || (kind == 1 && !package.cask) || (kind == 2 && package.cask) || (kind == 3 && package.outdated))
+            && (showDependencies || !package.isDependency)
+            && (query.isEmpty || package.name.localizedCaseInsensitiveContains(query) || package.summary.localizedCaseInsensitiveContains(query))
+        }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 18) {
                 if brew.brewPath == nil {
-                    Text(L(
-                        "Homebrew bu Mac’te yok. Kurulum brew.sh üzerinden yapılır; Hâl kendisi kurmaz.",
-                        "Homebrew is not on this Mac. Install it from brew.sh; Hâl does not install it."
-                    ))
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    Link("brew.sh", destination: URL(string: "https://brew.sh")!)
-                    toolButton(L("Yeniden bak", "Look again")) { brew.reload() }
+                    SettingsCard {
+                        ToolEmptyState(symbol: "shippingbox", title: L("Homebrew yüklü değil", "Homebrew is not installed"), detail: L("Paketleri yönetmek için önce Homebrew’u kur.", "Install Homebrew to manage packages."))
+                        Link(L("Homebrew web sitesini aç", "Open Homebrew website"), destination: URL(string: "https://brew.sh")!)
+                        Button(L("Yeniden denetle", "Check again")) { brew.reload(); Task { await brew.refreshInstalled() } }
+                    }
                 } else {
-                    labeledBlock(L("Kur", "Install")) {
-                        TextField(L("Paket adı", "Package name"), text: $installName)
-                            .textFieldStyle(.roundedBorder)
-                        Picker(L("Tür", "Kind"), selection: $cask) {
-                            Text(L("Formül", "Formula")).tag(false)
-                            Text("Cask").tag(true)
+                    SettingsCard {
+                        HStack {
+                            Picker(L("Görünüm", "View"), selection: $mode) {
+                                Text(L("Yüklü", "Installed")).tag(0)
+                                Text(L("Paket bul", "Find packages")).tag(1)
+                                Text(L("Servisler", "Services")).tag(2)
+                            }.pickerStyle(.segmented).labelsHidden()
+                            Button { Task { await brew.refreshInstalled() } } label: { Image(systemName: "arrow.clockwise") }
+                                .help(L("Listeyi yenile", "Refresh list")).disabled(brew.busy)
                         }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                        toolButton(L("Kur", "Install")) {
-                            let name = installName
-                            Task { await brew.install(name: name, cask: cask) }
-                        }
-                        .disabled(brew.busy || installName.trimmingCharacters(in: .whitespaces).isEmpty)
-                    }
-                    labeledBlock(L("Ara", "Search")) {
-                        TextField(L("Ara", "Search"), text: $query)
-                            .textFieldStyle(.roundedBorder)
-                            .onSubmit { Task { await brew.search(query, cask: cask) } }
-                        if brew.searchResults.isEmpty {
-                            Text(L("Sonuç yok.", "No results."))
-                                .font(.system(size: 12))
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ForEach(brew.searchResults) { item in
-                                toolRow(title: item.name, detail: nil) {
-                                    toolButton(L("Kur", "Install")) {
-                                        installName = item.name
-                                        Task { await brew.install(name: item.name, cask: item.cask) }
-                                    }
-                                    .disabled(brew.busy)
+                        if mode != 2 {
+                            HStack(spacing: 8) {
+                                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                                TextField(mode == 0 ? L("Yüklü paketleri filtrele", "Filter installed packages") : L("Paket adıyla ara", "Search by package name"), text: $query)
+                                    .textFieldStyle(.plain).onSubmit { search() }
+                                if !query.isEmpty {
+                                    Button { query = ""; searched = false } label: { Image(systemName: "xmark.circle.fill") }
+                                        .buttonStyle(.plain).foregroundStyle(.secondary).help(L("Aramayı temizle", "Clear search"))
+                                }
+                            }.padding(10).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 9))
+                            if mode == 0 {
+                                ViewThatFits(in: .horizontal) {
+                                    HStack { filters; Spacer(); dependencyToggle }
+                                    VStack(alignment: .leading, spacing: 10) { filters; dependencyToggle }
+                                }
+                            } else {
+                                HStack {
+                                    Picker(L("Paket türü", "Package type"), selection: $cask) {
+                                        Text(L("Komut satırı", "Command line")).tag(false)
+                                        Text(L("Uygulamalar", "Applications")).tag(true)
+                                    }.labelsHidden().frame(maxWidth: 220)
+                                    Spacer()
+                                    Button(L("Ara", "Search")) { search() }.disabled(brew.busy || query.trimmingCharacters(in: .whitespaces).isEmpty)
                                 }
                             }
                         }
+                        if brew.busy { HStack { ProgressView().controlSize(.small); Text(L("İşlem sürüyor…", "Working…")).font(.caption).foregroundStyle(.secondary) } }
                     }
-                    packageSection(L("Formüller", "Formulae"), brew.formulae)
-                    packageSection("Cask", brew.casks)
-                    labeledBlock(L("Servisler", "Services")) {
-                        if brew.services.isEmpty {
-                            Text(L("Kayıtlı servis yok.", "No services."))
-                                .font(.system(size: 12))
-                                .foregroundStyle(.secondary)
-                        }
-                        ForEach(brew.services) { service in
-                            toolRow(title: service.name, detail: service.status) {
-                                toolButton(service.running ? L("Durdur", "Stop") : L("Başlat", "Start")) {
-                                    if service.running {
-                                        stopPending = service
-                                    } else {
-                                        Task { await brew.setService(service, running: true) }
-                                    }
-                                }
-                                .disabled(brew.busy)
-                            }
-                        }
+                    if mode == 2 { services }
+                    else if mode == 1 { discovery }
+                    else { packages }
+                    if let error = brew.error {
+                        Label(error, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.orange)
                     }
-                    if !brew.log.isEmpty || brew.error != nil {
-                        labeledBlock(L("Çıktı", "Output")) {
-                            if let error = brew.error {
-                                Text(error)
-                                    .foregroundStyle(.red)
-                                    .fixedSize(horizontal: false, vertical: true)
+                    if !brew.log.isEmpty {
+                        SettingsCard {
+                            DisclosureGroup(L("İşlem geçmişi", "Activity log")) {
+                                Text(brew.log).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).padding(.top, 8)
                             }
-                            Text(brew.log)
-                                .font(.system(size: 11, design: .monospaced))
-                                .textSelection(.enabled)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, 8)
+            }.padding(.bottom, 12)
         }
-        .task { await brew.refreshInstalled() }
-        .alert(L("Paketi kaldır?", "Remove this package?"), isPresented: Binding(
-            get: { pending != nil },
-            set: { if !$0 { pending = nil } }
-        )) {
+        .task { if brew.formulae.isEmpty && brew.casks.isEmpty { await brew.refreshInstalled() } }
+        .onChange(of: mode) { _, _ in query = ""; searched = false; selected = nil }
+        .onChange(of: cask) { _, _ in searched = false }
+        .alert(L("Paketi kaldır?", "Remove this package?"), isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } })) {
             Button(L("Vazgeç", "Cancel"), role: .cancel) { pending = nil }
             Button(L("Kaldır", "Remove"), role: .destructive) {
-                if let pending { Task { await brew.uninstall(pending, zap: false) } }
-                self.pending = nil
+                if let package = pending { Task { await brew.uninstall(package, zap: false) } }; pending = nil
             }
-            if pending?.cask == true {
-                Button(L("Tercihleriyle kaldır", "Remove with preferences"), role: .destructive) {
-                    if let pending { Task { await brew.uninstall(pending, zap: true) } }
-                    self.pending = nil
-                }
-            }
-        } message: {
-            if let pending {
-                Text(pending.cask
-                     ? Lf("%1$@ kaldırılır. Cask ise tercihler ayrıca silinebilir.", "%1$@ will be removed. A cask can also drop its preferences.", pending.name)
-                     : Lf("%1$@ kaldırılır.", "%1$@ will be removed.", pending.name))
-            }
-        }
-        .alert(L("Servisi durdur?", "Stop this service?"), isPresented: Binding(
-            get: { stopPending != nil },
-            set: { if !$0 { stopPending = nil } }
-        )) {
+        } message: { Text(pending?.name ?? "") }
+        .alert(L("Servisi durdur?", "Stop this service?"), isPresented: Binding(get: { stopPending != nil }, set: { if !$0 { stopPending = nil } })) {
             Button(L("Vazgeç", "Cancel"), role: .cancel) { stopPending = nil }
             Button(L("Durdur", "Stop"), role: .destructive) {
-                if let stopPending { Task { await brew.setService(stopPending, running: false) } }
-                self.stopPending = nil
+                if let service = stopPending { Task { await brew.setService(service, running: false) } }; stopPending = nil
             }
-        } message: {
-            if let stopPending {
-                Text(Lf("%1$@ durur.", "%1$@ will stop.", stopPending.name))
+        } message: { Text(stopPending?.name ?? "") }
+    }
+
+    private var filters: some View {
+        Picker(L("Paketler", "Packages"), selection: $kind) {
+            Text(Lf("Tümü %1$d", "All %1$d", installed.count)).tag(0)
+            Text(L("Formüller", "Formulae")).tag(1)
+            Text(L("Cask’ler", "Casks")).tag(2)
+            Text(Lf("Güncel değil %1$d", "Outdated %1$d", installed.filter(\.outdated).count)).tag(3)
+        }.labelsHidden().pickerStyle(.menu).fixedSize()
+    }
+
+    private var dependencyToggle: some View {
+        Toggle(L("Bağımlılıkları göster", "Show dependencies"), isOn: $showDependencies).font(.caption).toggleStyle(.checkbox)
+    }
+
+    private var packages: some View {
+        SettingsCard {
+            HStack {
+                Text(L("Yüklü paketler", "Installed packages")).font(.headline)
+                ToolBadge(title: String(visible.count))
+                Spacer()
+            }
+            if visible.isEmpty {
+                ToolEmptyState(symbol: "line.3.horizontal.decrease.circle", title: L("Eşleşen paket yok", "No matching packages"), detail: L("Filtreyi değiştir veya Paket bul bölümünde ara.", "Change the filter or search in Find packages."))
+            }
+            LazyVStack(spacing: 0) {
+                ForEach(visible) { package in
+                    packageRow(package, installed: true)
+                    if package.id != visible.last?.id { Divider().padding(.vertical, 10) }
+                }
             }
         }
     }
 
-    @ViewBuilder
-    private func packageSection(_ title: String, _ packages: [BrewPackage]) -> some View {
-        labeledBlock(title) {
-            if packages.isEmpty {
-                Text(L("Yok.", "None."))
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-            ForEach(packages) { package in
-                toolRow(title: package.name, detail: package.version.nilIfEmpty) {
-                    HStack(spacing: 6) {
-                        toolButton(L("Yükselt", "Upgrade")) { Task { await brew.upgrade(package) } }
-                            .disabled(brew.busy)
-                        toolButton(L("Kaldır", "Remove")) { pending = package }
-                            .disabled(brew.busy)
-                    }
+    private var discovery: some View {
+        SettingsCard {
+            if !searched {
+                ToolEmptyState(symbol: "shippingbox", title: L("Yeni bir paket bul", "Find a new package"), detail: L("Bir ad yazıp Ara’ya bas. Sonuçtan paketi kurabilirsin.", "Enter a name and press Search, then install from the results."))
+            } else if brew.searchResults.isEmpty && !brew.busy {
+                ToolEmptyState(symbol: "magnifyingglass", title: L("Sonuç bulunamadı", "No results"), detail: L("Başka bir ad veya paket türü dene.", "Try another name or package type."))
+            } else {
+                ForEach(brew.searchResults) { package in
+                    packageRow(package, installed: installed.contains { $0.id == package.id })
+                    if package.id != brew.searchResults.last?.id { Divider().padding(.vertical, 10) }
                 }
             }
         }
+    }
+
+    private func packageRow(_ package: BrewPackage, installed: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: package.cask ? "app.dashed" : "terminal").foregroundStyle(.tint).frame(width: 26)
+                Button { withAnimation { selected = selected == package.id ? nil : package.id } } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(package.name).font(.system(size: 13, weight: .semibold))
+                        if !package.version.isEmpty { Text(package.version).font(.caption).foregroundStyle(.secondary) }
+                    }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                if package.outdated { ToolBadge(title: L("Güncelleme", "Update"), color: .orange) }
+                if !installed {
+                    Button(L("Kur", "Install")) { Task { await brew.install(name: package.name, cask: package.cask) } }.disabled(brew.busy)
+                } else {
+                    Image(systemName: selected == package.id ? "chevron.up" : "chevron.down").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            if selected == package.id {
+                VStack(alignment: .leading, spacing: 10) {
+                    if !package.summary.isEmpty { Text(package.summary).font(.callout).foregroundStyle(.secondary) }
+                    HStack {
+                        ToolBadge(title: package.cask ? L("Uygulama", "Application") : L("Komut satırı", "Command line"))
+                        if package.isDependency { ToolBadge(title: L("Bağımlılık", "Dependency")) }
+                        Spacer()
+                        if let url = URL(string: package.homepage), ["http", "https"].contains(url.scheme ?? "") { Link(L("Web sitesi", "Website"), destination: url) }
+                    }
+                    if !package.dependencies.isEmpty {
+                        Text(Lf("Bağımlılıklar: %1$@", "Dependencies: %1$@", package.dependencies.joined(separator: ", "))).font(.caption).foregroundStyle(.secondary)
+                    }
+                    if installed {
+                        HStack {
+                            if package.outdated { Button(L("Güncelle", "Update")) { Task { await brew.upgrade(package) } }.disabled(brew.busy) }
+                            Spacer()
+                            Button(L("Paketi kaldır…", "Remove package…"), role: .destructive) { pending = package }.disabled(brew.busy)
+                        }
+                    }
+                }.padding(12).background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 9))
+            }
+        }
+    }
+
+    private var services: some View {
+        SettingsCard(title: L("Arka plan servisleri", "Background services"), symbol: "gearshape.2") {
+            if brew.services.isEmpty {
+                ToolEmptyState(symbol: "gearshape.2", title: L("Servis yok", "No services"), detail: L("Homebrew servislerin burada görünür.", "Your Homebrew services appear here."))
+            }
+            ForEach(brew.services) { service in
+                HStack {
+                    Circle().fill(service.running ? Color.green : Color.secondary).frame(width: 7, height: 7)
+                    Text(service.name).font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    ToolBadge(title: service.running ? L("Çalışıyor", "Running") : L("Durdu", "Stopped"), color: service.running ? .green : .secondary)
+                    Button(service.running ? L("Durdur", "Stop") : L("Başlat", "Start")) {
+                        if service.running { stopPending = service } else { Task { await brew.setService(service, running: true) } }
+                    }.disabled(brew.busy)
+                }
+                if service.id != brew.services.last?.id { Divider() }
+            }
+        }
+    }
+
+    private func search() {
+        guard mode == 1 else { return }
+        searched = true
+        Task { await brew.search(query, cask: cask) }
     }
 }
 
@@ -230,10 +289,11 @@ struct VolumeMixerUtilityView: View {
 
 struct VolumeMixerPanel: View {
     @ObservedObject private var mixer = VolumeMixer.shared
+    @Environment(\.toolPresentation) private var presentation
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: presentation == .menu ? 10 : 14) {
                 deviceBlock(
                     symbol: "speaker.wave.2",
                     title: L("Çıkış", "Output"),
@@ -272,18 +332,19 @@ struct VolumeMixerPanel: View {
                         )
                     )
                 }
-                Divider()
+                Divider().padding(.vertical, 2)
+                HStack {
+                    Text(L("Uygulamalar", "Applications")).font(.system(size: 12, weight: .semibold))
+                    Spacer()
+                    ToolBadge(title: Lf("%1$d uygulama", "%1$d apps", mixer.apps.count))
+                }.padding(.top, 4)
                 if mixer.apps.isEmpty {
-                    Text(L(
-                        "Şu an ses çıkaran uygulama yok.",
-                        "No app is playing audio right now."
-                    ))
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    SettingsCard {
+                        ToolEmptyState(symbol: "speaker.wave.2", title: L("Şu an ses çalan uygulama yok", "No apps playing audio"), detail: L("Ses çalmaya başladığında uygulama burada görünür.", "Apps appear here when they start playing audio."))
+                    }
                 }
                 ForEach(mixer.apps) { app in
-                    VStack(alignment: .leading, spacing: 6) {
+                    SettingsCard {
                         HStack(spacing: 8) {
                             appIcon(app.iconPath)
                             Text(app.name)
@@ -292,6 +353,10 @@ struct VolumeMixerPanel: View {
                                 .truncationMode(.tail)
                                 .foregroundStyle(app.playing ? Color.primary : Color.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                            if app.playing { Circle().fill(Color.green).frame(width: 6, height: 6).help(L("Ses çalıyor", "Playing audio")) }
+                            Button("100%") { mixer.setVolume(id: app.id, 1) }
+                                .controlSize(.small).disabled(abs(app.volume - 1) < 0.005)
+                                .help(L("Seviyeyi sıfırla", "Reset level"))
                             muteButton(
                                 muted: app.muted,
                                 helpOn: L("Sesi aç", "Unmute"),
@@ -308,14 +373,10 @@ struct VolumeMixerPanel: View {
                         )
                     }
                 }
-                Text(L(
-                    "100% iken ses doğrudan gider. Altı veya üstü, o uygulamanın sesini seçilen kazançla çalar. Kayıt tutulmaz. Üst sınır 150%’dir.",
-                    "At 100% the sound passes straight through. Below or above that, Hâl plays the app at the chosen gain. Nothing is recorded. The upper limit is 150%."
-                ))
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                DisclosureGroup(L("Ses mikseri hakkında", "About the mixer")) {
+                    Text(L("100% özgün ses seviyesidir. Uygulama sesini 150%’ye kadar artırabilirsin. Ses kaydı saklanmaz; uygulama başına kontrol için macOS ses yakalama izni gerekir.", "100% is the original volume. You can boost apps up to 150%. No recordings are saved; per-app control needs macOS audio capture access."))
+                        .font(.caption).foregroundStyle(.secondary).padding(.top, 6)
+                }.font(.caption)
                 if let note = mixer.note {
                     Text(note)
                         .font(.system(size: 11))
@@ -350,68 +411,32 @@ struct VolumeMixerPanel: View {
         set: @escaping (AudioDeviceID) -> Void,
         level: Level?
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        SettingsCard {
             HStack(spacing: 8) {
-                Image(systemName: symbol)
-                    .frame(width: 16)
-                    .foregroundStyle(.secondary)
-                Text(title)
-                    .font(.system(size: 13))
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-                if let level {
+                Image(systemName: symbol).font(.system(size: 11)).frame(width: 16).foregroundStyle(.secondary)
+                Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
+                Spacer(minLength: 4)
+                deviceMenu(title: title, devices: devices, selection: selection, set: set)
+                    .frame(width: presentation == .menu ? 168 : 220)
+            }
+            if let level {
+                HStack(spacing: 8) {
+                    levelRow(value: level.value, range: level.range, muted: level.muted, set: level.set)
                     muteButton(muted: level.muted, helpOn: L("Sesi aç", "Unmute"), helpOff: L("Sessize al", "Mute"), action: level.toggleMute)
                 }
-            }
-            deviceMenu(devices: devices, selection: selection, set: set)
-            if let level {
-                levelRow(value: level.value, range: level.range, muted: level.muted, set: level.set)
             }
         }
     }
 
-    private func deviceMenu(
-        devices: [MixerDevice],
-        selection: AudioDeviceID,
-        set: @escaping (AudioDeviceID) -> Void
-    ) -> some View {
-        let selectedName = devices.first { $0.id == selection }?.name ?? mixer.outputName
-        return Menu {
-            if devices.isEmpty {
-                Button(selectedName.isEmpty ? L("Aygıt yok", "No device") : selectedName) {}
-                    .disabled(true)
+    private func deviceMenu(title: String, devices: [MixerDevice], selection: AudioDeviceID, set: @escaping (AudioDeviceID) -> Void) -> some View {
+        Picker(title, selection: Binding(get: { selection }, set: set)) {
+            if !devices.contains(where: { $0.id == selection }) {
+                Text(L("Aygıt kullanılamıyor", "Device unavailable")).tag(selection)
             }
-            ForEach(devices) { device in
-                Button {
-                    set(device.id)
-                } label: {
-                    if device.id == selection {
-                        Label(device.name, systemImage: "checkmark")
-                    } else {
-                        Text(device.name)
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Text(selectedName.isEmpty ? L("Aygıt yok", "No device") : selectedName)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.secondary)
-            }
-            .font(.system(size: 12))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            ForEach(devices) { device in Text(device.name).tag(device.id) }
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .labelsHidden().pickerStyle(.menu).controlSize(.small)
+        .help(L("Ses aygıtını değiştir", "Change audio device"))
         .disabled(devices.isEmpty)
     }
 
@@ -456,7 +481,7 @@ struct VolumeMixerPanel: View {
         }()
         return Image(nsImage: image)
             .resizable()
-            .frame(width: 16, height: 16)
+            .frame(width: 30, height: 30)
     }
 }
 
@@ -474,124 +499,143 @@ struct UpdatesPanel: View {
     @ObservedObject private var updates = SystemUpdateService.shared
     @State private var pending: AvailableUpdate?
     @State private var brewAll = false
+    @State private var showPackages = false
 
-    private var groups: [UpdateOrigin] {
-        var seen: [UpdateOrigin] = []
-        for item in updates.items where !seen.contains(item.origin) {
-            seen.append(item.origin)
-        }
-        return seen
-    }
+    private var groups: [UpdateOrigin] { [.sparkle, .appStore, .brew, .system].filter { origin in updates.items.contains { $0.origin == origin } } }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        toolButton(updates.scanning ? L("Denetleniyor…", "Checking…") : L("Denetle", "Check")) {
-                            Task { await updates.scan() }
-                        }
-                        .disabled(updates.scanning || updates.applying)
-                        if updates.items.contains(where: { $0.origin == .brew }) {
-                            toolButton(L("Homebrew’u yükselt", "Upgrade Homebrew")) { brewAll = true }
-                                .disabled(updates.applying || updates.scanning)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    Text(updates.summary.isEmpty ? L("Henüz denetlenmedi.", "Not checked yet.") : updates.summary)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                ForEach(groups, id: \.rawValue) { origin in
-                    labeledBlock(origin.title) {
-                        ForEach(updates.items.filter { $0.origin == origin }) { item in
-                            toolRow(title: item.name, detail: versionLine(item)) {
-                                toolButton(actionTitle(item)) { confirm(item) }
-                                    .disabled(updates.applying || updates.scanning)
+            VStack(alignment: .leading, spacing: 18) {
+                SettingsCard {
+                    HStack(spacing: 12) {
+                        Image(systemName: updates.scanning ? "arrow.triangle.2.circlepath" : "checkmark.shield")
+                            .font(.system(size: 23)).foregroundStyle(.tint)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(updates.scanning ? L("Güncellemeler aranıyor", "Checking for updates") : updates.summary.isEmpty ? L("Uygulamalarını güncel tut", "Keep your apps up to date") : updates.summary)
+                                .font(.system(size: 14, weight: .semibold))
+                            if let date = updates.lastChecked {
+                                Text(Lf("Son denetleme: %1$@", "Last checked: %1$@", date.formatted(.dateTime.locale(Language.locale).day().month().hour().minute())))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            } else {
+                                Text(L("Yeni sürümler kendi kaynaklarından yüklenir.", "New versions are installed from their own sources.")).font(.caption).foregroundStyle(.secondary)
                             }
                         }
+                        Spacer(minLength: 0)
+                        if updates.scanning { ProgressView().controlSize(.small) }
                     }
+                    Button { Task { await updates.scan() } } label: {
+                        Label(L("Şimdi denetle", "Check now"), systemImage: "arrow.clockwise")
+                    }.disabled(updates.scanning || updates.applying || !anySource)
+                    if updates.applying { Label(L("Güncelleme sürüyor…", "Updating…"), systemImage: "arrow.down.circle").font(.caption).foregroundStyle(.secondary) }
+                    if !updates.scanning, !updates.summary.isEmpty, updates.items.isEmpty, updates.sourceErrors.isEmpty {
+                        Label(L("Seçili kaynaklarda yeni sürüm bulunamadı.", "No new versions found in the selected sources."), systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green)
+                    }
+                    if !updates.sourceErrors.isEmpty {
+                        Divider()
+                        ForEach(updates.sourceErrors, id: \.self) { error in
+                            Label(error, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
+                        }
+                    }
+                }
+                ForEach(groups, id: \.rawValue) { origin in
+                    SettingsCard {
+                        if origin == .brew {
+                            DisclosureGroup(isExpanded: $showPackages) {
+                                updateRows(origin).padding(.top, 12)
+                            } label: {
+                                HStack {
+                                    Label(origin.title, systemImage: symbol(origin)).font(.headline)
+                                    ToolBadge(title: String(items(origin).count), color: .orange)
+                                    Spacer()
+                                }
+                            }
+                            if !items(origin).isEmpty {
+                                Button(L("Homebrew paketlerini güncelle…", "Update Homebrew packages…")) { brewAll = true }
+                                    .disabled(updates.applying || updates.scanning)
+                            }
+                        } else {
+                            HStack {
+                                Label(origin.title, systemImage: symbol(origin)).font(.headline)
+                                if origin != .appStore || !items(origin).contains(where: { $0.token == "store" }) { ToolBadge(title: String(items(origin).count)) }
+                                Spacer()
+                            }
+                            updateRows(origin)
+                        }
+                    }
+                }
+                SettingsCard(title: L("Denetleme tercihleri", "Check preferences"), symbol: "clock.arrow.circlepath") {
+                    HStack {
+                        Text(L("Arka planda denetle", "Check in background")).font(.callout)
+                        Spacer()
+                        Picker(L("Sıklık", "Frequency"), selection: $updates.options.intervalDays) {
+                            Text(L("Kapalı", "Off")).tag(0)
+                            Text(L("Her gün", "Daily")).tag(1)
+                            Text(L("Her hafta", "Weekly")).tag(7)
+                        }.labelsHidden().frame(maxWidth: 170)
+                    }
+                    Text(L("Yalnızca denetler. Kurulumu her zaman sen başlatırsın; uygulama kapalıyken denetleme yapılmaz.", "Checks only. You always start installation; checks run while Hâl is open."))
+                        .font(.caption).foregroundStyle(.secondary)
+                    Divider()
+                    DisclosureGroup(L("Güncelleme kaynakları", "Update sources")) {
+                        VStack(spacing: 14) {
+                            SettingsToggleRow(title: L("Yüklü uygulamalar", "Installed apps"), detail: L("Desteklenen geliştirici güncelleme akışlarını denetler.", "Checks supported developer update feeds."), symbol: "app", isOn: $updates.options.includeApps)
+                            SettingsToggleRow(title: "Homebrew", detail: L("Formülleri ve cask’leri dahil eder.", "Includes formulae and casks."), symbol: "shippingbox", isOn: $updates.options.includeBrew)
+                            SettingsToggleRow(title: "App Store", detail: L("Mağaza güncellemelerini denetler veya App Store’u açar.", "Checks store updates or opens the App Store."), symbol: "bag", isOn: $updates.options.includeAppStore)
+                            SettingsToggleRow(title: "macOS", detail: L("Sistem yazılımı güncellemelerini dahil eder.", "Includes system software updates."), symbol: "laptopcomputer", isOn: $updates.options.includeSystem)
+                        }.padding(.top, 14)
+                    }
+                    .disabled(updates.scanning || updates.applying)
+                    if !anySource { Label(L("Denetlemek için bir kaynak seç.", "Select a source to check."), systemImage: "info.circle").font(.caption).foregroundStyle(.orange) }
                 }
                 if !updates.log.isEmpty {
-                    labeledBlock(L("Çıktı", "Output")) {
-                        Text(updates.log)
-                            .font(.system(size: 11, design: .monospaced))
-                            .textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    SettingsCard {
+                        DisclosureGroup(L("Denetleme ayrıntıları", "Check details")) {
+                            Text(updates.log).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).padding(.top, 8)
+                        }
                     }
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, 12)
+            }.padding(.bottom, 12)
         }
-        .alert(alertTitle, isPresented: Binding(
-            get: { pending != nil || brewAll },
-            set: { if !$0 { pending = nil; brewAll = false } }
-        )) {
+        .alert(brewAll ? L("Homebrew güncellemeleri kurulsun mu?", "Install Homebrew updates?") : L("Güncelleme kurulsun mu?", "Install this update?"), isPresented: Binding(get: { pending != nil || brewAll }, set: { if !$0 { pending = nil; brewAll = false } })) {
             Button(L("Vazgeç", "Cancel"), role: .cancel) { pending = nil; brewAll = false }
             Button(L("Sürdür", "Continue")) {
-                if brewAll {
-                    brewAll = false
-                    Task { await updates.upgradeAllBrew() }
-                } else if let pending {
-                    let item = pending
-                    self.pending = nil
-                    Task { await updates.apply(item) }
-                }
+                if brewAll { brewAll = false; Task { await updates.upgradeAllBrew() } }
+                else if let item = pending { pending = nil; Task { await updates.apply(item) } }
             }
         } message: {
-            Text(alertMessage)
+            Text(brewAll ? L("Eski formüller ve cask’ler yükseltilir. Bazı uygulamalar yeniden açılabilir.", "Outdated formulae and casks are upgraded. Some apps may reopen.") : pending?.origin == .system ? L("macOS güncellemesi kurulur. Mac yeniden başlayabilir ve parola sorulabilir.", "A macOS update is installed. Your Mac may restart and ask for a password.") : pending?.name ?? "")
         }
     }
 
-    /// Başlık zaten sürümü taşıyorsa (macOS 27.2 / 27.2) ikinci satır eklenmez.
-    private func versionLine(_ item: AvailableUpdate) -> String? {
-        let line = item.versions.trimmingCharacters(in: .whitespacesAndNewlines)
-        if line.isEmpty { return nil }
-        if item.name.localizedCaseInsensitiveContains(line) { return nil }
-        return line
+    private var anySource: Bool { updates.options.includeApps || updates.options.includeBrew || updates.options.includeAppStore || updates.options.includeSystem }
+    private func items(_ origin: UpdateOrigin) -> [AvailableUpdate] { updates.items.filter { $0.origin == origin } }
+    private func symbol(_ origin: UpdateOrigin) -> String {
+        switch origin { case .system: return "laptopcomputer"; case .brew: return "shippingbox"; case .appStore: return "bag"; case .sparkle: return "app" }
     }
-
-    private func confirm(_ item: AvailableUpdate) {
-        if item.origin == .sparkle || (item.origin == .appStore && item.token == "store") {
-            Task { await updates.apply(item) }
-            return
+    private func updateRows(_ origin: UpdateOrigin) -> some View {
+        LazyVStack(spacing: 10) {
+            ForEach(items(origin)) { item in
+                HStack(spacing: 10) {
+                    if origin == .sparkle {
+                        Image(nsImage: NSWorkspace.shared.icon(forFile: item.token)).resizable().frame(width: 30, height: 30)
+                    } else {
+                        Image(systemName: symbol(origin)).foregroundStyle(.tint).frame(width: 30, height: 30)
+                            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(item.name).font(.system(size: 13, weight: .semibold)).lineLimit(2)
+                        if !item.versions.isEmpty && !item.name.contains(item.versions) {
+                            Text(item.versions).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    Button(item.origin == .sparkle || item.token == "store" ? L("Aç", "Open") : L("Güncelle", "Update")) {
+                        if item.origin == .sparkle || item.token == "store" { Task { await updates.apply(item) } }
+                        else { pending = item }
+                    }.disabled(updates.applying || updates.scanning)
+                }.padding(12).background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
+            }
         }
-        pending = item
-    }
-
-    private func actionTitle(_ item: AvailableUpdate) -> String {
-        switch item.origin {
-        case .sparkle: return L("Aç", "Open")
-        case .appStore where item.token == "store": return L("App Store", "App Store")
-        default: return L("Kur", "Install")
-        }
-    }
-
-    private var alertTitle: String {
-        if brewAll { return L("Homebrew güncellemeleri kurulsun mu?", "Install Homebrew updates?") }
-        return L("Güncelleme kurulsun mu?", "Install this update?")
-    }
-
-    private var alertMessage: String {
-        if brewAll {
-            return L(
-                "Eski formüller ve cask’ler yükseltilir. Bazı uygulamalar kapanıp yeniden açılabilir.",
-                "Outdated formulae and casks are upgraded. Some apps may quit and reopen."
-            )
-        }
-        if pending?.origin == .system {
-            return L(
-                "macOS yazılım güncellemesi kurulur. Mac yeniden başlayabilir ve parola sorulabilir.",
-                "A macOS software update is installed. The Mac may restart and ask for a password."
-            )
-        }
-        if let pending {
-            return Lf("%1$@ kurulur.", "%1$@ will be installed.", pending.name)
-        }
-        return ""
     }
 }
 
@@ -621,89 +665,61 @@ struct KeepAwakePanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Toggle(L("Mac normal enerji kurallarını izler", "Mac follows normal energy rules"), isOn: Binding(
-                get: { followsNormalRules },
-                set: { follow in
-                    showClock = false
-                    if follow {
-                        arming = false
-                        store.setAlwaysWake(false)
-                    } else {
-                        arming = true
+        VStack(alignment: .leading, spacing: 16) {
+            SettingsCard {
+                SettingsToggleRow(title: L("Mac’i uyanık tut", "Keep Mac awake"), detail: store.settings.alwaysWake ? hint : L("Kapalıyken normal enerji ayarların geçerlidir.", "When off, your normal energy settings apply."), symbol: "moon.zzz", isOn: Binding(
+                    get: { store.settings.alwaysWake },
+                    set: { on in
+                        arming = false; showClock = false
+                        store.setAlwaysWake(on)
                     }
-                }
-            ))
-            .font(.system(size: 13))
-
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
-                ForEach(presets, id: \.id) { chip in
-                    chipButton(chip.title, selected: selectedMinutes == chip.minutes) {
-                        togglePreset(chip.minutes)
+                ))
+                Divider()
+                Text(L("Süre", "Duration")).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                    ForEach(presets, id: \.id) { chip in
+                        chipButton(chip.title, selected: selectedMinutes == chip.minutes) { togglePreset(chip.minutes) }
                     }
+                    chipButton("∞", selected: store.settings.alwaysWake && store.settings.wakeIndefinite) { toggleForever() }
+                    chipButton(L("Saate kadar…", "Until…"), selected: clockSelected) { toggleClock() }
                 }
-                chipButton("∞", selected: store.settings.alwaysWake && store.settings.wakeIndefinite) {
-                    toggleForever()
-                }
-                chipButton(L("Şu saate kadar…", "Until a time…"), selected: clockSelected) {
-                    toggleClock()
+                if showClock || clockSelected {
+                    HStack {
+                        Label(L("Bitiş saati", "End time"), systemImage: "clock")
+                        Spacer()
+                        DatePicker(L("Saat", "Time"), selection: $untilTime, displayedComponents: .hourAndMinute)
+                            .labelsHidden().onChange(of: untilTime) { _, value in start(minutes: minutes(until: value)) }
+                    }.font(.callout)
                 }
             }
-
-            if showClock || clockSelected {
-                DatePicker(
-                    L("Saat", "Time"),
-                    selection: $untilTime,
-                    displayedComponents: .hourAndMinute
-                )
-                .labelsHidden()
-                .onChange(of: untilTime) { _, value in
-                    start(minutes: minutes(until: value))
-                }
-            }
-
-            Text(hint)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            DisclosureGroup(L("Seçenekler", "Options")) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Toggle(L("Seçili uygulamalar öndeyken", "While selected apps are frontmost"), isOn: $store.settings.wakeWhileApps)
-                    if store.settings.wakeWhileApps {
-                        Text(store.settings.focusApps.joined(separator: ", "))
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                        Button(L("Listeyi Odak’ta düzenle", "Edit the list in Focus"), action: onEditApps)
-                            .controlSize(.small)
+            SettingsCard {
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 14) {
+                        SettingsToggleRow(title: L("Çalışma uygulamaları", "Work apps"), detail: L("Seçili uygulamalardan biri öndeyken uyanık kalır.", "Stays awake while a selected app is in front."), symbol: "app.badge", isOn: $store.settings.wakeWhileApps)
+                        if store.settings.wakeWhileApps {
+                            Text(store.settings.focusApps.joined(separator: ", ")).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                            Button(L("Uygulama listesini düzenle", "Edit app list"), action: onEditApps).controlSize(.small)
+                        }
+                        Divider()
+                        SettingsToggleRow(title: L("Güç ve harici ekran", "Power and external display"), detail: L("Mac prize takılıyken veya harici ekran bağlıyken uyanık kalır.", "Stays awake on AC power or when an external display is connected."), symbol: "powerplug", isOn: $store.settings.wakeWhilePowerOrDisplay)
+                        Text(L("Bu koşullar, sürekli mod kapalıyken süreye ek olarak çalışır. En az biri sağlandığında Mac uyanık kalır.", "These conditions work alongside the timer when Always is off. Your Mac stays awake while at least one is met."))
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }.padding(.top, 14)
+                } label: {
+                    HStack {
+                        Label(L("Otomatik koşullar", "Automatic conditions"), systemImage: "slider.horizontal.3").font(.system(size: 13, weight: .semibold))
+                        Spacer()
+                        let count = [store.settings.wakeWhileApps, store.settings.wakeWhilePowerOrDisplay].filter { $0 }.count
+                        ToolBadge(title: Lf("%1$d etkin", "%1$d active", count))
                     }
-                    Toggle(L("Prizde veya harici ekrandayken", "While on power or an external display"), isOn: $store.settings.wakeWhilePowerOrDisplay)
-                    Text(L(
-                        "Süre seçilmediyse ve koşul da yoksa uyanık tutma sürekli kalır. Koşullardan biri tutunca da açık kalır.",
-                        "With no duration and no condition, keep awake stays on. It also stays on while any chosen condition holds."
-                    ))
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.top, 6)
             }
-            .font(.system(size: 13))
-
-            Divider()
-
-            Toggle(L("Kapak kapalıyken devam et", "Continue while the lid is closed"), isOn: $store.settings.wakeWhileLidClosed)
-                .disabled(WakeController.lidClosed() == nil)
-                .font(.system(size: 13))
-            Text(lidCaption)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            SettingsCard {
+                SettingsToggleRow(title: L("Kapak kapalıyken devam et", "Continue while the lid is closed"), detail: lidCaption, symbol: "laptopcomputer", isOn: $store.settings.wakeWhileLidClosed)
+                    .disabled(WakeController.lidClosed() == nil)
+            }
         }
-        .onChange(of: store.settings.alwaysWake) { _, on in
-            if on { arming = false }
-        }
+        .onChange(of: store.settings.alwaysWake) { _, on in if on { arming = false } }
     }
 
     private var selectedMinutes: Int? {

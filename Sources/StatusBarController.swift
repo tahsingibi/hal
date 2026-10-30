@@ -4,9 +4,11 @@ import SwiftUI
 
 @MainActor
 final class StatusBarController: NSObject, NSPopoverDelegate {
-    private final class Extra {
+    @MainActor private final class Extra {
         let id: String
         let item: NSStatusItem
+        let ticker = QuotaTickerModel()
+        var tickerHost: QuotaTickerHost?
         init(id: String, item: NSStatusItem) {
             self.id = id
             self.item = item
@@ -28,6 +30,8 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     private var screenObserver: Any?
     private var outsideClickMonitor: Any?
     private var escapeMonitor: Any?
+    private var rotationTimer: Timer?
+    private var rotationIDs: [String] = []
 
     init(store: AppStore) {
         self.store = store
@@ -50,7 +54,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         updatesWindow?.title = L("Hâl · Güncellemeler", "Hâl · Updates")
     }
 
-    func openSettings(tab: SettingsTab = .location) {
+    func openSettings(tab: SettingsTab = .features) {
         if let settingsWindow {
             // Farklı bir sekme istendiyse içeriği yenile; aynıysa var olanı öne al.
             if settingsTab != tab {
@@ -68,8 +72,8 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         let window = NSWindow(contentViewController: controller)
         window.title = L("Hâl Ayarları", "Hâl Settings")
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        window.setContentSize(NSSize(width: 880, height: 680))
-        window.minSize = NSSize(width: 720, height: 520)
+        window.setContentSize(NSSize(width: 1020, height: 760))
+        window.minSize = NSSize(width: 860, height: 620)
         window.center()
         window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
@@ -181,7 +185,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
             .store(in: &cancellables)
 
         store.$settings
-            .map { "\($0.language.rawValue)-\($0.menuBarVisible.joined())-\($0.disabledModules.joined())-\($0.mirrorToOtherDisplays)-\($0.menuBarCollapsed)-\($0.claudeEnabled)-\($0.codexEnabled)-\($0.grokEnabled)-\($0.customProviders.count)-\($0.countryCode)-\($0.city)" }
+            .map { "\($0.language.rawValue)-\($0.menuBarVisible.joined())-\($0.disabledModules.joined())-\($0.moduleOrder.joined())-\($0.mirrorToOtherDisplays)-\($0.menuBarCollapsed)-\($0.claudeEnabled)-\($0.codexEnabled)-\($0.grokEnabled)-\($0.customProviders.count)-\($0.countryCode)-\($0.city)" }
             .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
@@ -277,28 +281,60 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     }
 
     private func refreshExtras() {
+        syncQuotaRotation()
         for extra in extras {
             apply(extra)
         }
         relayoutReplicas()
     }
 
+    private func syncQuotaRotation() {
+        let ids = store.settings.menuBarCollapsed ? store.visibleQuotaIDs.filter { id in store.quotas.contains { $0.id == id } } : []
+        if !ids.contains(store.menuBarQuotaID ?? "") { store.menuBarQuotaID = ids.first }
+        guard ids != rotationIDs else { return }
+        rotationIDs = ids; rotationTimer?.invalidate(); rotationTimer = nil
+        guard ids.count > 1 else { return }
+        let timer = Timer(timeInterval: 3.5, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.store.menuBarQuotaID = QuotaRotation.next(in: self.rotationIDs, after: self.store.menuBarQuotaID)
+                self.refreshExtras()
+            }
+        }
+        timer.tolerance = 0.2; RunLoop.main.add(timer, forMode: .common); rotationTimer = timer
+    }
+
     private func apply(_ extra: Extra) {
         guard let button = extra.item.button else { return }
         let spec = spec(for: extra.id)
-        button.image = icon(for: extra.id).templateImage(size: 16)
-        button.imageScaling = NSImageScaling(rawValue: 0)!
+        if extra.id == MenuBarSummary.id {
+            button.image = nil; button.title = ""
+            let group = store.rotatingQuota
+            extra.ticker.value = QuotaTickerValue(id: group?.id ?? "", title: spec.title, icon: icon(for: extra.id))
+            if extra.tickerHost == nil {
+                let host = QuotaTickerHost(rootView: QuotaTickerView(model: extra.ticker))
+                host.frame = NSRect(x: 0, y: 0, width: 68, height: 22)
+                host.autoresizingMask = [.width, .height]
+                button.addSubview(host); extra.tickerHost = host
+            }
+            extra.item.length = 68
+            extra.tickerHost?.frame = button.bounds
+            button.setAccessibilityLabel(group?.name ?? "Hâl")
+            button.setAccessibilityValue(spec.title)
+        } else {
+            button.image = icon(for: extra.id).templateImage(size: 16)
+            button.imageScaling = NSImageScaling(rawValue: 0)!
+            button.title = spec.title; button.imageHugsTitle = true
+            extra.item.length = NSStatusItem.variableLength
+        }
         button.appearsDisabled = false
-        button.title = spec.title
-        button.imageHugsTitle = true
         button.toolTip = spec.tooltip
-        extra.item.length = NSStatusItem.variableLength
     }
 
     /// Özet ikon, temsil ettiği sağlayıcının markasını gösterir.
     private func icon(for id: String) -> BrandIcon {
         guard id == MenuBarSummary.id else { return BrandIcon.from(id: id) }
-        return store.summaryQuota.map { BrandIcon.from(id: $0.id) } ?? .app
+        return store.rotatingQuota.map { BrandIcon.from(id: $0.id) } ?? .app
     }
 
     private func spec(for id: String) -> (title: String, tooltip: String) {
@@ -329,7 +365,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         let visible = Set(store.visibleQuotaIDs)
         let groups = store.quotas.filter { visible.contains($0.id) }
         guard !groups.isEmpty else { return ("…", "Hâl") }
-        let title = store.summaryQuota?.menuBarTitle ?? "…"
+        let title = store.rotatingQuota?.menuBarTitle ?? "…"
         let lines = groups.map { "\($0.name): \($0.menuBarTitle)" }
         return (title, lines.joined(separator: "\n"))
     }
@@ -460,6 +496,8 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         toolsMenu.addItem(withTitle: "Homebrew…", action: #selector(homebrewClicked), keyEquivalent: "")
         toolsMenu.addItem(withTitle: L("Ses…", "Sound…"), action: #selector(mixerClicked), keyEquivalent: "")
         toolsMenu.addItem(withTitle: L("Güncellemeler…", "Updates…"), action: #selector(updatesClicked), keyEquivalent: "")
+        toolsMenu.addItem(withTitle: L("Pencere değiştirici…", "Window switcher…"), action: #selector(switcherClicked), keyEquivalent: "")
+        toolsMenu.addItem(withTitle: L("Ekran parlaklığı…", "Display brightness…"), action: #selector(displaysClicked), keyEquivalent: "")
         toolsMenu.items.forEach { $0.target = self }
         tools.submenu = toolsMenu
         menu.addItem(tools)
@@ -484,6 +522,10 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     @objc private func portsClicked() { openPorts() }
     @objc private func homebrewClicked() { openHomebrew() }
     @objc private func mixerClicked() { openMixer() }
+    @objc private func switcherClicked() {
+        if store.settings.switcher.enabled { WindowSwitcher.shared.openOrAdvance() } else { openSettings(tab: .switcher) }
+    }
+    @objc private func displaysClicked() { openSettings(tab: .displays) }
     @objc private func updatesClicked() { openUpdates() }
     @objc private func toggleCleaning() { store.setCleaningMode(!store.cleaningMode) }
     @objc private func toggleWake() { store.setAlwaysWake(!store.settings.alwaysWake) }

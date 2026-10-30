@@ -1,0 +1,5 @@
+"CFBundleDisplayName" = "Hâl";
+"NSCalendarsFullAccessUsageDescription" = "Your calendar is read to show upcoming meetings on the board. Access is requested only when you connect Calendar in Settings.";
+"NSCalendarsUsageDescription" = "Your calendar is read to show upcoming meetings on the board.";
+"NSLocationWhenInUseUsageDescription" = "Your location is used to show prayer times for your area.";
+"NSAudioCaptureUsageDescription" = "App audio is captured to control each app’s volume separately. No recordings are saved.";

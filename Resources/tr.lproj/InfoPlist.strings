@@ -1,0 +1,5 @@
+"CFBundleDisplayName" = "Hâl";
+"NSCalendarsFullAccessUsageDescription" = "Yaklaşan toplantılarını panoda göstermek için takvimin okunur. İzin yalnızca sen Ayarlar’dan istediğinde sorulur.";
+"NSCalendarsUsageDescription" = "Yaklaşan toplantılarını panoda göstermek için takvimin okunur.";
+"NSLocationWhenInUseUsageDescription" = "Namaz vakitlerini bulunduğun konuma göre göstermek için konumun kullanılır.";
+"NSAudioCaptureUsageDescription" = "Uygulama sesini ayrı kısabilmek için çalan programın sesi okunur. Kayıt tutulmaz.";
