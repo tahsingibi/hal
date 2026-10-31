@@ -43,6 +43,10 @@ final class SwitcherInput {
     static func shouldCommit(flags: UInt64, required: UInt64, pinned: Bool) -> Bool {
         !pinned && required != 0 && flags & required != required
     }
+    static func shouldReconnect(permissionGranted: Bool, wasGranted: Bool, live: Bool,
+                                recording: Bool, secureInput: Bool) -> Bool {
+        permissionGranted != wasGranted || (permissionGranted && !live && !recording && !secureInput)
+    }
     private func emit(_ action: Action) {
         DispatchQueue.main.async { [weak self] in self?.onAction?(action) }
     }

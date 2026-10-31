@@ -30,6 +30,15 @@ struct SettingsLocalizationTests {
         precondition(!SwitcherInput.shouldCommit(flags: SwitcherKey.apps.modifiers | CGEventFlags.maskShift.rawValue, required: SwitcherKey.apps.holdMask, pinned: false))
         precondition(!SwitcherInput.shouldCommit(flags: 0, required: SwitcherKey.apps.holdMask, pinned: true))
         precondition(!SwitcherInput.shouldCommit(flags: 0, required: 0, pinned: false))
+        // Granting permission later must reconnect without reopening Settings;
+        // healthy taps, recording and secure input must not trigger restarts.
+        precondition(SwitcherInput.shouldReconnect(permissionGranted: true, wasGranted: false, live: false, recording: false, secureInput: false))
+        precondition(SwitcherInput.shouldReconnect(permissionGranted: false, wasGranted: true, live: true, recording: false, secureInput: false))
+        precondition(SwitcherInput.shouldReconnect(permissionGranted: true, wasGranted: true, live: false, recording: false, secureInput: false))
+        precondition(!SwitcherInput.shouldReconnect(permissionGranted: false, wasGranted: false, live: false, recording: false, secureInput: false))
+        precondition(!SwitcherInput.shouldReconnect(permissionGranted: true, wasGranted: true, live: true, recording: false, secureInput: false))
+        precondition(!SwitcherInput.shouldReconnect(permissionGranted: true, wasGranted: true, live: false, recording: true, secureInput: false))
+        precondition(!SwitcherInput.shouldReconnect(permissionGranted: true, wasGranted: true, live: false, recording: false, secureInput: true))
         precondition(WindowSwitcher.wrappedIndex(-1, count: 3) == 2)
         precondition(WindowSwitcher.wrappedIndex(3, count: 3) == 0)
         precondition(WindowSwitcher.wrappedIndex(3, count: 0) == 0)

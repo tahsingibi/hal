@@ -13,29 +13,26 @@ enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
     /// Kenar çubuğu grupları: uygulama ayarları ile modül ayarları karışmasın.
     enum Group: String, CaseIterable, Identifiable {
         case app = "Uygulama"
-        case productivity = "Çalışma"
         case modules = "Kişisel"
         case tools = "Araçlar"
-        case info = ""
+        case info = "Bilgi"
 
         var id: String { rawValue }
 
         var title: String {
             switch self {
-            case .app: return L("Temel ayarlar", "Essentials")
-            case .productivity: return L("Çalışma ve enerji", "Work & energy")
+            case .app: return L("Uygulama", "Application")
             case .modules: return L("Kişisel", "Personal")
             case .tools: return L("Araçlar", "Tools")
-            case .info: return ""
+            case .info: return L("Bilgi", "Information")
             }
         }
 
         var tabs: [SettingsTab] {
             switch self {
             case .app: return [.general, .features, .permissions, .appearance, .notifications]
-            case .productivity: return [.focus, .quota, .wake, .switcher, .displays, .mixer]
-            case .modules: return [.worship, .calendar, .fitness, .money]
-            case .tools: return [.downloader, .ports, .homebrew, .updates]
+            case .modules: return [.focus, .worship, .fitness, .money]
+            case .tools: return [.quota, .calendar, .wake, .switcher, .displays, .mixer, .downloader, .ports, .homebrew, .updates]
             case .info: return [.about, .changelog]
             }
         }
@@ -46,7 +43,7 @@ enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
         case .general: return L("Genel", "General")
         case .features: return L("Özellikler", "Features")
         case .permissions: return L("İzinler", "Permissions")
-        case .appearance: return L("Görünüm", "Appearance")
+        case .appearance: return L("Menü çubuğu", "Menu bar")
         case .notifications: return L("Bildirimler", "Notifications")
         case .wake: return L("Uyanık tutma", "Keep awake")
         case .switcher: return L("Pencere değiştirici", "Window switcher")
@@ -57,7 +54,7 @@ enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
         case .calendar: return L("Takvim", "Calendar")
         case .fitness: return L("Sağlık", "Health")
         case .money: return L("Ödemeler", "Payments")
-        case .downloader: return L("İndirici", "Downloader")
+        case .downloader: return L("Video indirici", "Video downloader")
         case .ports: return L("Portlar", "Ports")
         case .homebrew: return "Homebrew"
         case .mixer: return L("Ses", "Sound")
@@ -113,6 +110,7 @@ struct SettingsView: View {
     @State private var copiedDiagnostics = false
     @State private var calendarAccess = CalendarService.shared.access
     @State private var claudeHint: String?
+    @AppStorage("hal.settings.quotaTab") private var quotaPart = "general"
 
     /// Belirli bir sekmeyle açılabilir; bildirimden ya da popover'dan doğrudan
     /// ilgili sayfaya götürmek için.
@@ -352,91 +350,151 @@ struct SettingsView: View {
     }
 
     private var quotaTab: some View {
-        Form {
-            Section(L("Yerleşik", "Built-in")) {
-                Toggle("Claude", isOn: Binding(
-                    get: { store.settings.claudeEnabled },
-                    set: { store.toggle(.claude, enabled: $0) }
-                ))
-                Toggle("Codex", isOn: Binding(
-                    get: { store.settings.codexEnabled },
-                    set: { store.toggle(.codex, enabled: $0) }
-                ))
-                Toggle("Grok", isOn: Binding(
-                    get: { store.settings.grokEnabled },
-                    set: { store.toggle(.grok, enabled: $0) }
-                ))
-                HStack {
-                    Button(L("Claude’a tekrar giriş", "Sign in to Claude again")) {
-                        if let error = ClaudeAuth.openLogin() {
-                            claudeHint = error
-                        } else {
-                            claudeHint = L(
-                                "Terminal açıldı. Giriş bittikten sonra Kotaları yenile’ye bas.",
-                                "Terminal opened. After you finish signing in, tap Refresh quotas."
-                            )
-                        }
-                    }
-                    Button(L("Kotaları yenile", "Refresh quotas")) {
-                        claudeHint = nil
-                        Task { await store.refresh() }
-                    }
+        VStack(spacing: 0) {
+            Picker("", selection: $quotaPart) {
+                Text(L("Genel", "General")).tag("general")
+                Text("Claude").tag("claude")
+                Text("Codex").tag("codex")
+                Text("Grok").tag("grok")
+                Text(L("Özel", "Custom")).tag("custom")
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 480)
+            .padding(.horizontal, 20)
+            .padding(.top, 14)
+            Form {
+                switch quotaPart {
+                case "claude": claudeQuotaSection
+                case "codex": codexQuotaSection
+                case "grok": grokQuotaSection
+                case "custom": customQuotaSection
+                default: generalQuotaSection
                 }
-                if let claudeHint {
-                    Text(claudeHint)
-                        .font(.caption)
-                        .foregroundStyle(
-                            claudeHint.contains("bulunamadı") || claudeHint.localizedCaseInsensitiveContains("not found")
-                                ? .red : .secondary
-                        )
-                }
+            }
+            .formStyle(.grouped)
+        }
+    }
+
+    private var generalQuotaSection: some View {
+        Group {
+            Section(L("Menü çubuğu", "Menu bar")) {
+                Toggle(L("Kotaları tek alanda sırayla göster", "Show quotas in one rotating item"), isOn: $store.settings.menuBarCollapsed)
                 Text(L(
-                    "Claude oturumu Keychain’den okunur. Süre dolduysa Terminal’de claude çalıştır, tarayıcıdan giriş yap, sonra Yenile.",
-                    "The Claude session is read from Keychain. If it expired, run claude in Terminal, sign in in the browser, then Refresh."
+                    "Açık sağlayıcıların kalan kotası menü çubuğunda tek bir alanda 3,5 saniyede bir sırayla gösterilir.",
+                    "The remaining quota of each enabled provider is shown in one menu bar item, rotating every 3.5 seconds."
                 ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if store.settings.grokEnabled {
-                    HStack {
-                        Button(L("Terminalde grok login", "grok login in Terminal")) {
-                            if let error = GrokAuth.openLogin() {
-                                claudeHint = error
-                            } else {
-                                claudeHint = L(
-                                    "Terminal açıldı. Giriş bittikten sonra Yenile’ye bas.",
-                                    "Terminal opened. After you finish signing in, tap Refresh."
-                                )
-                            }
-                        }
-                        Button(L("Kotaları yenile", "Refresh quotas")) {
-                            claudeHint = nil
-                            Task { await store.refresh() }
-                        }
-                    }
-                    Text(L(
-                        "Haftalık sınır ve Grok Build, grok’un kendi fatura ucundan okunur. Oturum ~/.grok/auth.json dosyasıdır; süresi dolunca kendiliğinden yenilenir.",
-                        "Weekly limit and Grok Build are read from grok’s own billing endpoint. The session is ~/.grok/auth.json; it renews itself when it expires."
-                    ))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                if store.settings.claudeEnabled { visibilityToggle("Claude", id: "claude") }
+                if store.settings.codexEnabled { visibilityToggle("Codex", id: "codex") }
+                if store.settings.grokEnabled { visibilityToggle("Grok", id: "grok") }
+                ForEach(store.settings.customProviders.filter(\.enabled)) { provider in
+                    visibilityToggle(provider.name, id: provider.id.uuidString)
                 }
-                Text(L(
-                    "Claude, Claude Code oturumundan; Codex ~/.codex/auth.json dosyasından; Grok, grok login oturumundan okunur. Kota kapalı başlar; görmek için anahtarı sen açarsın.",
-                    "Claude is read from the Claude Code session; Codex from ~/.codex/auth.json; Grok from the grok login session. Quotas start off; you turn each one on to see it."
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            }
+            Section {
+                Button(L("Kotaları yenile", "Refresh quotas")) {
+                    claudeHint = nil
+                    Task { await store.refresh() }
+                }
                 if !installedCLIs.isEmpty {
-                    Text(Lf(
-                        "Bu makinede bulundu: %1$@.",
-                        "Found on this Mac: %1$@.",
-                        installedCLIs.joined(separator: ", ")
-                    ))
+                    Text(Lf("Bu makinede bulundu: %1$@.", "Found on this Mac: %1$@.", installedCLIs.joined(separator: ", ")))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
-            Section(L("Gelişmiş · Özel kota kaynakları", "Advanced · Custom quota sources")) {
+        }
+    }
+
+    private var claudeQuotaSection: some View {
+        Section("Claude") {
+            Toggle(L("Claude kotasını izle", "Track the Claude quota"), isOn: Binding(
+                get: { store.settings.claudeEnabled },
+                set: { store.toggle(.claude, enabled: $0) }
+            ))
+            HStack {
+                Button(L("Claude’a tekrar giriş", "Sign in to Claude again")) {
+                    if let error = ClaudeAuth.openLogin() {
+                        claudeHint = error
+                    } else {
+                        claudeHint = L(
+                            "Terminal açıldı. Giriş bittikten sonra Kotaları yenile’ye bas.",
+                            "Terminal opened. After you finish signing in, tap Refresh quotas."
+                        )
+                    }
+                }
+                Button(L("Kotaları yenile", "Refresh quotas")) {
+                    claudeHint = nil
+                    Task { await store.refresh() }
+                }
+            }
+            if let claudeHint {
+                Text(claudeHint).font(.caption).foregroundStyle(.secondary)
+            }
+            Text(L(
+                "Claude oturumu Keychain’den okunur. Süre dolduysa Terminal’de claude çalıştır, tarayıcıdan giriş yap, sonra Yenile.",
+                "The Claude session is read from Keychain. If it expired, run claude in Terminal, sign in in the browser, then Refresh."
+            ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var codexQuotaSection: some View {
+        Section("Codex") {
+            Toggle(L("Codex kotasını izle", "Track the Codex quota"), isOn: Binding(
+                get: { store.settings.codexEnabled },
+                set: { store.toggle(.codex, enabled: $0) }
+            ))
+            Button(L("Kotaları yenile", "Refresh quotas")) {
+                Task { await store.refresh() }
+            }
+            Text(L(
+                "Codex ~/.codex/auth.json dosyasından okunur. Oturum yoksa Terminal’de codex login çalıştır.",
+                "Codex is read from ~/.codex/auth.json. If there is no session, run codex login in Terminal."
+            ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var grokQuotaSection: some View {
+        Section("Grok") {
+            Toggle(L("Grok kotasını izle", "Track the Grok quota"), isOn: Binding(
+                get: { store.settings.grokEnabled },
+                set: { store.toggle(.grok, enabled: $0) }
+            ))
+            HStack {
+                Button(L("Terminalde grok login", "grok login in Terminal")) {
+                    if let error = GrokAuth.openLogin() {
+                        claudeHint = error
+                    } else {
+                        claudeHint = L(
+                            "Terminal açıldı. Giriş bittikten sonra Yenile’ye bas.",
+                            "Terminal opened. After you finish signing in, tap Refresh."
+                        )
+                    }
+                }
+                Button(L("Kotaları yenile", "Refresh quotas")) {
+                    claudeHint = nil
+                    Task { await store.refresh() }
+                }
+            }
+            if let claudeHint {
+                Text(claudeHint).font(.caption).foregroundStyle(.secondary)
+            }
+            Text(L(
+                "Haftalık sınır ve Grok Build, grok’un kendi fatura ucundan okunur. Oturum ~/.grok/auth.json dosyasıdır; süresi dolunca kendiliğinden yenilenir.",
+                "Weekly limit and Grok Build are read from grok’s own billing endpoint. The session is ~/.grok/auth.json; it renews itself when it expires."
+            ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var customQuotaSection: some View {
+            Section(L("Özel kota kaynakları", "Custom quota sources")) {
                 ForEach(store.settings.customProviders) { provider in
                     HStack {
                         Circle().fill(Color(hex: provider.accentHex)).frame(width: 8, height: 8)
@@ -501,8 +559,6 @@ struct SettingsView: View {
                     }
                 }
             }
-        }
-        .formStyle(.grouped)
     }
 
     private var calendarTab: some View {
@@ -776,85 +832,7 @@ struct SettingsView: View {
     }
 
     private var downloaderTab: some View {
-        Form {
-            Section(L("Video indir", "Download video")) {
-                DownloaderForm()
-                Text(L(
-                    "Menü çubuğu ikonuna sağ tıklayıp Araçlar > Video indir ile de açılır.",
-                    "You can also open it by right-clicking the menu bar icon and choosing Tools > Download video."
-                ))
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section(L("Varsayılanlar", "Defaults")) {
-                Picker(L("Biçim", "Format"), selection: $store.settings.downloadFormat) {
-                    ForEach(DownloadService.Format.allCases) { format in
-                        Text(format.title).tag(format)
-                    }
-                }
-                LabeledContent(L("Klasör", "Folder")) {
-                    HStack {
-                        Text(store.settings.downloadDestination.path)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1).truncationMode(.head)
-                        Button(L("Değiştir", "Change")) { chooseFolder() }
-                        if !store.settings.downloadFolder.isEmpty {
-                            Button(L("Masaüstü", "Desktop")) { store.settings.downloadFolder = "" }
-                        }
-                    }
-                }
-                Text(L(
-                    "Klasör seçmezsen masaüstüne iner.",
-                    "If you don’t choose a folder, downloads go to the Desktop."
-                ))
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section(L("Güncelleme", "Updates")) {
-                Toggle(L("yt-dlp'yi kendi güncelle", "Auto-update yt-dlp"), isOn: $store.settings.downloaderAutoUpdate)
-                Text(L(
-                    "Günde bir kez, ilk indirmeden önce sessizce günceller. Ayrıca indirme “Unable to extract” gibi bir çıkarıcı hatasıyla düşerse zorla güncelleyip bir kez daha dener — YouTube tarafı değiştiğinde takılıp kalmazsın.",
-                    "Once a day, it quietly updates before the first download. If a download fails with an extractor error like “Unable to extract”, it force-updates and retries once — so a YouTube change won’t leave you stuck."
-                ))
-                    .font(.caption).foregroundStyle(.secondary)
-                if let tools = Optional(DownloadService.tools()), let path = tools.ytdlp {
-                    LabeledContent(L("Yöntem", "Method")) {
-                        Text(DownloadService.updateStrategy(for: path).describe)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Button(L("Şimdi güncelle", "Update now")) {
-                    Task { await DownloadService.shared.updateTool() }
-                }
-                if let note = DownloadService.shared.lastUpdateNote {
-                    Text(note).font(.caption).foregroundStyle(.tertiary)
-                }
-            }
-            Section(L("Araçlar", "Tools")) {
-                let tools = DownloadService.tools()
-                LabeledContent("yt-dlp") {
-                    Text(tools.ytdlp ?? L("bulunamadı", "not found"))
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(tools.ytdlp == nil ? .red : .secondary)
-                }
-                LabeledContent("ffmpeg") {
-                    Text(tools.ffmpeg ?? L("bulunamadı", "not found"))
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(tools.ffmpeg == nil ? .red : .secondary)
-                }
-                if !tools.ready {
-                    Text("brew install \(tools.missing.joined(separator: " "))")
-                        .font(.system(size: 11, design: .monospaced))
-                        .textSelection(.enabled)
-                }
-                Text(L(
-                    "Uygulama kendi başına bir şey kurmaz; araçların kurulumu sana ait.",
-                    "The app never installs anything on its own; installing the tools is up to you."
-                ))
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-        }
-        .formStyle(.grouped)
+        DownloaderSettingsForm()
     }
 
     private func chooseFolder() {
@@ -973,25 +951,11 @@ struct SettingsView: View {
 
     private var menuBarTab: some View {
         Form {
-            Section(L("Panel düzeni", "Panel layout")) {
-                Toggle(L("Kompakt panel", "Compact panel"), isOn: $store.settings.compactPanel)
-                Text(L("Sıra, panel sekmelerine ve menü çubuğuna uygulanır.", "Order applies to panel tabs and menu bar items."))
+            Section(L("Panel sekmeleri", "Panel tabs")) {
+                PanelLayoutEditor()
+                Text(L("Sıra ve görünürlük menü çubuğu panelindeki sekmelere uygulanır.",
+                       "Order and visibility apply to the tabs of the menu bar panel."))
                     .font(.caption).foregroundStyle(.secondary)
-                ForEach(Array(store.settings.orderedModules.enumerated()), id: \.element.id) { index, module in
-                    HStack {
-                        Label(module.title, systemImage: module.symbol)
-                        if !store.settings.isModuleEnabled(module) {
-                            Text(L("Kapalı", "Off")).font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button { store.moveModule(module, by: -1) } label: { Image(systemName: "chevron.up") }
-                            .disabled(index == 0)
-                            .help(L("Yukarı taşı", "Move up"))
-                        Button { store.moveModule(module, by: 1) } label: { Image(systemName: "chevron.down") }
-                            .disabled(index == store.settings.orderedModules.count - 1)
-                            .help(L("Aşağı taşı", "Move down"))
-                    }
-                }
                 Button(L("Özellikleri yönet", "Manage features")) { tab = .features }
             }
             Section(L("Bugün panosunda göster", "Show on Today board")) {
@@ -1019,24 +983,10 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Section(L("Topbar’da göster", "Show in menu bar")) {
-                if store.settings.claudeEnabled {
-                    visibilityToggle("Claude", id: "claude")
-                }
-                if store.settings.codexEnabled {
-                    visibilityToggle("Codex", id: "codex")
-                }
-                if store.settings.grokEnabled {
-                    visibilityToggle("Grok", id: "grok")
-                }
-                ForEach(store.settings.customProviders.filter(\.enabled)) { provider in
-                    visibilityToggle(provider.name, id: provider.id.uuidString)
-                }
+            Section(L("Menü çubuğunda göster", "Show in menu bar")) {
                 visibilityToggle(L("Namaz vakitleri", "Prayer times"), id: "prayer")
-                Text(L(
-                    "İlk açılışta yalnızca Hâl ikonu durur. Claude, Codex, Grok ve namaz extra’sını buradan tek tek aç. Kapalı olanlar detay kutusunda kalır.",
-                    "On first launch only the Hâl icon is shown. Turn on Claude, Codex, Grok, and the prayer extra one by one here. Hidden ones stay in the detail box."
-                ))
+                Text(L("Kota ikonları Ayarlar › Kotalar › Genel’den yönetilir.",
+                       "Quota icons are managed in Settings › Quotas › General."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1047,15 +997,6 @@ struct SettingsView: View {
                 Text(L(
                     "Özet ikon ve hiçbir modül görünmezken duran genel ikon her koşulda panoyu açar; ikisi de tek bir şeyi değil genel durumu temsil eder.",
                     "The summary icon and the general icon shown when no modules are visible always open the board; both represent overall status, not a single item."
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Section(L("Yerleşim", "Layout")) {
-                Toggle(L("Kotaları tek ikonda topla", "Collapse quotas into one icon"), isOn: $store.settings.menuBarCollapsed)
-                Text(L(
-                    "Seçili tüm kota sağlayıcıları aynı ikonda 3,5 saniyede bir sırayla gösterilir. Marka ve kota birlikte animasyonla değişir. Namaz saati ayrı kalır.",
-                    "All selected quota providers cycle through one icon every 3.5 seconds. The brand and quota animate together. Prayer time stays separate."
                 ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -1385,7 +1326,12 @@ struct SettingsView: View {
                 .textSelection(.enabled)
             Button(L("Güncellemeleri denetle", "Check for updates")) { UpdateController.check() }
                 .controlSize(.small)
-            Button(L("Yenilikler", "What's New")) { tab = .changelog }
+            HStack(spacing: 8) {
+                Button(L("Yenilikler", "What's New")) { tab = .changelog }
+                Button(L("Tanıtım", "Introduction")) {
+                    NotificationCenter.default.post(name: .halShowWelcome, object: nil)
+                }
+            }
                 .controlSize(.small)
             Text(L(
                 "Yeni sürüm olunca sorar. Kendiliğinden kurmaz.",

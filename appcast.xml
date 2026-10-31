@@ -7,20 +7,20 @@
     <language>tr</language>
     <item>
       <title>1.1.0</title>
-      <pubDate>Sat, 31 Oct 2026 12:00:00 +0300</pubDate>
-      <sparkle:version>2</sparkle:version>
+      <pubDate>Sat, 31 Oct 2026 22:40:00 +0300</pubDate>
+      <sparkle:version>3</sparkle:version>
       <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
       <description><![CDATA[
         <ul>
-          <li>Uyanık tutma: sayaç, seçili uygulamalar, priz veya harici ekran, kapak</li>
-          <li>Homebrew kurulumu ve servisleri</li>
-          <li>Ses mikseri</li>
-          <li>macOS, Homebrew ve uygulama güncellemeleri</li>
-          <li>Menü çubuğu paneli ve Yenilikler sayfası</li>
+          <li>Yeni menü paneli ve sağlayıcı başına kota sekmeleri</li>
+          <li>Pil grafikleri, sıcaklık, sağlık, döngü ve kapasite ayrıntıları</li>
+          <li>Pencere değiştiricide izin durumu ve basılı tut / bırak geçişi</li>
+          <li>Hakkında bölümünde Tanıtım düğmesi</li>
+          <li>Uyanık tutma, Homebrew, ses mikseri ve güncellemeler</li>
         </ul>
       ]]></description>
-      <enclosure url="https://github.com/tahsingibi/hal/releases/download/v1.1.0/Hal-1.1.0.zip" sparkle:edSignature="XzWqkMqWei8JormgO8UxiONJJlE22Qvc3HRmuHPR3t73/rR370Ow91DvvtckMhHQ2He4gFSItIlKH0vhhxPICw==" sparkle:version="2" sparkle:shortVersionString="1.1.0" length="4229706" type="application/octet-stream"/>
+      <enclosure url="https://github.com/tahsingibi/hal/releases/download/v1.1.0/Hal-1.1.0.zip" sparkle:edSignature="eIH0jV0pymavHbFkOQIcGLNPXV0wBzaIakqc4ueNSCJFOQZ3/fQAMXtIopd9tkXEv/y5zbbZZcHIO9MyisM/BQ==" sparkle:version="3" sparkle:shortVersionString="1.1.0" length="5566484" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>

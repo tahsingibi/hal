@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         store.applyPersistedModes()
         statusBar = StatusBarController(store: store)
+        statusBar?.showWelcomeIfNeeded()
         UpdateController.start()
         SystemUpdateService.shared.startBackgroundChecks()
     }

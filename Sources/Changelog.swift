@@ -29,6 +29,12 @@ enum Changelog {
             version: "1.1.0",
             date: "2026-10-31",
             notesTR: [
+                "Yeni menü paneli: tek satırda ikon sekmeleri, Kişisel sekmesi ve Ayarlar / Uyanık tut / Çık düğmeleri",
+                "Kotalar: her sağlayıcı kendi sekmesinde",
+                "Güç: pil ve sistem grafikleri, adaptör gücü, pil sıcaklığı, sağlık, döngü ve kapasite ayrıntıları",
+                "Harici monitörlerde DDC ile parlaklık",
+                "Hakkında sayfasından yeniden açılabilen tanıtım ekranı",
+                "Pencere değiştirici: izin durumu, izin sonrası kısayolların yeniden bağlanması ve basılı tut / bırak geçişi",
                 "Uyanık tutma: sayaç, seçili uygulamalar öndeyken, prizde veya harici ekrandayken, kapak kapalıyken",
                 "Homebrew: arama, kurma, kaldırma, yükseltme, servisi başlatma ve durdurma",
                 "Ses mikseri: çıkış sesi ve uygulama başına seviye",
@@ -37,6 +43,12 @@ enum Changelog {
                 "Yenilikler kendi sayfasında"
             ],
             notesEN: [
+                "New menu panel: icon tabs on one row, a Personal tab and Settings / Keep awake / Quit buttons",
+                "Quotas: each provider on its own tab",
+                "Power: battery and system charts, adapter power, battery temperature, health, cycles and capacity details",
+                "Brightness over DDC on external monitors",
+                "Introduction screen that can be reopened from About",
+                "Window switcher: permission status, shortcut reconnection after granting access and hold-and-release switching",
                 "Keep awake: a timer, while selected apps are frontmost, while on power or an external display, and while the lid is closed",
                 "Homebrew: search, install, remove, upgrade, start and stop services",
                 "Volume mixer: output level and a level per app",

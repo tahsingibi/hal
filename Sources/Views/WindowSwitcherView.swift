@@ -7,6 +7,13 @@ struct WindowSwitcherSettingsView: View {
     @ObservedObject private var switcher = WindowSwitcher.shared
     @State private var shortcutNote: String?
     private var prefs: Binding<SwitcherPreferences> { $store.settings.switcher }
+    private var showsPreviews: Bool { store.settings.switcher.layout == .previews }
+    private var screenRecordingRow: some View {
+        permissionRow(L("Ekran kaydı", "Screen Recording"),
+                      detail: L("Yalnızca pencere önizlemeleri için. Görüntüler yalnızca bellekte tutulur; dosyaya veya ağa yazılmaz. Büyük simgeler ya da basit liste görünümü bu izni istemez.",
+                                "Only for window previews. Images stay in memory and are never saved or uploaded. The large icons and simple list layouts don’t need it."),
+                      granted: switcher.captureGranted, action: switcher.requestCapture)
+    }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -14,6 +21,24 @@ struct WindowSwitcherSettingsView: View {
                     .font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                 SettingsCard(title: L("Pencere değiştirici", "Window switcher")) {
                     SettingsToggleRow(title: L("Hâl değiştiricisini kullan", "Use the Hâl switcher"), detail: L("Küçültülmüş pencereler ve aynı uygulamanın birden çok penceresi dahil.", "Includes minimized windows and multiple windows from the same app."), symbol: "macwindow.on.rectangle", isOn: prefs.enabled)
+                    if store.settings.switcher.enabled {
+                        if !switcher.accessibilityGranted {
+                            permissionRow(L("Klavye ile pencere geçişi için izin gerekiyor", "Window switching needs permission"),
+                                          detail: L("Erişilebilirlik izni verilmemiş. İzin verdikten sonra Hâl kısayolları otomatik olarak yeniden bağlar.",
+                                                    "Accessibility access is missing. Hâl reconnects the shortcuts automatically after access is granted."),
+                                          granted: false, action: switcher.requestAccessibility)
+                                .padding(10)
+                                .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                        } else if !switcher.inputLive {
+                            Label(L("Klavye bağlantısı bekleniyor. Güvenli parola alanından çıktıktan sonra tekrar dene.",
+                                    "Waiting for keyboard access. Leave any secure password field and try again."),
+                                  systemImage: "keyboard.badge.exclamationmark")
+                                .font(.caption).foregroundStyle(.orange)
+                        }
+                        Text(Lf("Uygulamalar: %1$@ · Pencereler: %2$@", "Applications: %1$@ · Windows: %2$@",
+                                store.settings.switcher.appShortcut.title, store.settings.switcher.windowShortcut.title))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     Text(L("Yerleşim", "Layout")).font(.system(size: 12, weight: .medium)).padding(.top, 4)
                     HStack(alignment: .top, spacing: 10) {
                         ForEach(SwitcherLayout.allCases) { layout in
@@ -107,8 +132,10 @@ struct WindowSwitcherSettingsView: View {
                 }
                 SettingsCard(title: L("İzinler", "Permissions")) {
                     permissionRow(L("Erişilebilirlik", "Accessibility"), detail: L("Gerçek pencereleri listelemek ve basılı tut/bırak kısayollarını kullanmak için.", "For individual windows and hold-and-release keyboard switching."), granted: switcher.accessibilityGranted, action: switcher.requestAccessibility)
-                    Divider()
-                    permissionRow(L("Ekran kaydı", "Screen Recording"), detail: L("Pencere önizlemeleri için. Görüntüler yalnızca bellekte tutulur; dosyaya veya ağa yazılmaz.", "For window previews. Images stay in memory and are never saved or uploaded."), granted: switcher.captureGranted, action: switcher.requestCapture)
+                    if showsPreviews {
+                        Divider()
+                        screenRecordingRow
+                    }
                 }
             }.frame(maxWidth: 820).frame(maxWidth: .infinity).padding(24)
         }

@@ -230,7 +230,7 @@ The app is **not** sandboxed. Everything it reads is listed here:
 
 A downloaded copy asks about new versions on its own; nothing installs automatically. It checks once a day, and you can also trigger it from Settings › About › *Check for updates*.
 
-- **Channel:** `https://raw.githubusercontent.com/tahsingibi/hal/main/appcast.xml`. The app reads this file from the repo. The zip goes on a GitHub Release; its address is the `enclosure` line inside `appcast.xml`. The channel lists **1.1.0** (build 2).
+- **Channel:** `https://raw.githubusercontent.com/tahsingibi/hal/main/appcast.xml`. The app reads this file from the repo. The zip goes on a GitHub Release; its address is the `enclosure` line inside `appcast.xml`. The channel lists **1.1.0** (build 3).
 - **Sparkle:** The bundle ships with Sparkle 2.10.0. `build.sh` downloads the archive and verifies it with SHA-256.
 - **Keys:** The public key is in `SUPublicEDKey`. The private key is in the login keychain (account name `Hal`) and never enters the repo. If the key is deleted, updates after this version can no longer be signed.
 - **This release:** the DMG and the Sparkle zip on the GitHub Release. An in-app check sees 1.1.0.
@@ -271,6 +271,10 @@ Tabs and menu bar icons are derived from the `ModuleKind` registry in `Sources/M
 The About page in the app shows the same list.
 
 ### 1.1.0 — 31 October 2026
+
+- Compact power panel: battery and system charts, adapter power, temperature, health, cycles and capacity details
+- Introduction screen available from About
+- Window switcher permission status, automatic shortcut reconnection after granting access and hold-and-release switching
 
 - Keep awake: a timer, while selected apps are frontmost, while on power or an external display, and while the lid is closed
 - Homebrew: search, install, remove, upgrade, start and stop services

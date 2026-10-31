@@ -132,10 +132,9 @@ struct WeeklyInsightsView: View {
     private func insightRow(icon: String, title: String, value: String, detail: String?, tint: String) -> some View {
         HStack(spacing: 9) {
             Image(systemName: icon).foregroundStyle(Color(hex: tint)).frame(width: 16)
-            Text(title).font(.system(size: 12)).foregroundStyle(.secondary)
-            Spacer()
-            Text(value).font(.system(size: 12, weight: .medium))
-            if let detail { Text(detail).font(.system(size: 10)).foregroundStyle(.tertiary) }
+            Text(title).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).layoutPriority(1)
+            Spacer(minLength: 8)
+            RowValue(value: value, detail: detail)
         }
         .padding(.vertical, 4)
     }
@@ -310,10 +309,9 @@ struct HealthOverviewView: View {
     private func statusRow(_ icon: String, _ title: String, _ value: String, _ detail: String?, _ tint: String) -> some View {
         HStack(spacing: 9) {
             Image(systemName: icon).foregroundStyle(Color(hex: tint)).frame(width: 16)
-            Text(title).font(.system(size: 12)).foregroundStyle(.secondary)
-            Spacer()
-            Text(value).font(.system(size: 12, weight: .medium))
-            if let detail { Text(detail).font(.system(size: 10)).foregroundStyle(.tertiary) }
+            Text(title).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).layoutPriority(1)
+            Spacer(minLength: 8)
+            RowValue(value: value, detail: detail)
         }
         .padding(.vertical, 4)
     }
@@ -494,6 +492,192 @@ struct DownloaderForm: View {
 
     private func start() {
         service.startManaged(link: link, format: store.settings.downloadFormat,
+                             destination: store.settings.downloadDestination,
+                             autoUpdate: store.settings.downloaderAutoUpdate)
+    }
+
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.directoryURL = store.settings.downloadDestination
+        if panel.runModal() == .OK, let url = panel.url { store.settings.downloadFolder = url.path }
+    }
+}
+
+/// Settings page of the downloader, laid out as a native grouped form.
+struct DownloaderSettingsForm: View {
+    @EnvironmentObject private var store: AppStore
+    @ObservedObject private var service = DownloadService.shared
+    @State private var link = ""
+    @State private var tools = DownloadService.Tools()
+    @State private var toolsChecked = false
+
+    private var trimmedLink: String { link.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        Form {
+            Section {
+                HStack(spacing: 6) {
+                    TextField(L("Bağlantı", "Link"), text: $link, prompt: Text("https://…"))
+                        .onSubmit(start)
+                    Button {
+                        link = NSPasteboard.general.string(forType: .string) ?? ""
+                    } label: {
+                        Image(systemName: "doc.on.clipboard")
+                    }
+                    .buttonStyle(.borderless)
+                    .help(L("Panodan yapıştır", "Paste from clipboard"))
+                }
+                Picker(L("Biçim", "Format"), selection: $store.settings.downloadFormat) {
+                    ForEach(DownloadService.Format.allCases) { format in
+                        Text(format == .mp3 ? L("Ses (MP3)", "Audio (MP3)") : L("Video (MP4)", "Video (MP4)")).tag(format)
+                    }
+                }
+                .pickerStyle(.segmented)
+                status
+                HStack {
+                    Spacer()
+                    if service.isRunning {
+                        Button(L("İptal", "Cancel"), role: .cancel) { service.cancel() }
+                    } else {
+                        Button(L("İndir", "Download"), action: start)
+                            .buttonStyle(.borderedProminent)
+                            .keyboardShortcut(.defaultAction)
+                            .disabled(trimmedLink.isEmpty || (toolsChecked && !tools.ready))
+                    }
+                }
+            } header: {
+                Text(L("İndir", "Download"))
+            } footer: {
+                Text(store.settings.downloadFormat == .mp3
+                     ? L("Bağlantıdaki sesi en yüksek kalitede MP3 olarak kaydeder.",
+                         "Saves the link’s audio as a high quality MP3.")
+                     : L("Bağlantıdaki videoyu en iyi kalitede MP4 olarak kaydeder.",
+                         "Saves the link’s video in the best quality as MP4."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section(L("Kaydetme konumu", "Save location")) {
+                LabeledContent(L("Klasör", "Folder")) {
+                    HStack(spacing: 8) {
+                        Text(store.settings.downloadDestination.path)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Button(L("Değiştir…", "Change…"), action: chooseFolder)
+                    }
+                }
+                Button(L("Klasörü Finder’da aç", "Open folder in Finder")) {
+                    NSWorkspace.shared.open(store.settings.downloadDestination)
+                }
+            }
+
+            Section {
+                if toolsChecked {
+                    toolRow("yt-dlp", path: tools.ytdlp)
+                    toolRow("ffmpeg", path: tools.ffmpeg)
+                } else {
+                    ProgressView().controlSize(.small)
+                }
+                Toggle(L("yt-dlp’yi kendiliğinden güncelle", "Update yt-dlp automatically"),
+                       isOn: $store.settings.downloaderAutoUpdate)
+                Button(L("yt-dlp’yi şimdi güncelle", "Update yt-dlp now")) {
+                    Task { await DownloadService.shared.updateTool() }
+                }
+                if let note = service.lastUpdateNote {
+                    Text(note).font(.caption).foregroundStyle(.tertiary)
+                }
+                if toolsChecked, !tools.ready {
+                    LabeledContent(L("Kurulum", "Install")) {
+                        HStack(spacing: 8) {
+                            Text(installCommand)
+                                .font(.system(.body, design: .monospaced))
+                                .textSelection(.enabled)
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(installCommand, forType: .string)
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                            }
+                            .buttonStyle(.borderless)
+                            .help(L("Kopyala", "Copy"))
+                        }
+                    }
+                }
+            } header: {
+                Text(L("Araçlar", "Tools"))
+            } footer: {
+                Text(L("İndirme yt-dlp ve ffmpeg ile yapılır. Homebrew ile kurabilirsin.",
+                       "Downloads use yt-dlp and ffmpeg. You can install them with Homebrew."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear(perform: refreshTools)
+    }
+
+    private var installCommand: String { "brew install " + tools.missing.joined(separator: " ") }
+
+    private func toolRow(_ name: String, path: String?) -> some View {
+        LabeledContent(name) {
+            if let path {
+                Label(path, systemImage: "checkmark.circle.fill")
+                    .labelStyle(.titleAndIcon)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            } else {
+                Label(L("Bulunamadı", "Not found"), systemImage: "xmark.circle.fill")
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    @ViewBuilder private var status: some View {
+        switch service.state {
+        case .running(let progress, let note):
+            VStack(alignment: .leading, spacing: 4) {
+                ProgressView(value: progress)
+                Text(note).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
+            }
+        case .updating(let note):
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(note).foregroundStyle(.secondary)
+            }
+        case .finished(let path):
+            LabeledContent {
+                Button(L("Finder’da göster", "Show in Finder")) { service.revealInFinder(path) }
+            } label: {
+                Label(L("İndirme tamamlandı", "Download finished"), systemImage: "checkmark.circle.fill")
+            }
+        case .failed(let reason):
+            Label(reason, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
+        case .cancelled:
+            Text(L("İptal edildi.", "Cancelled.")).foregroundStyle(.secondary)
+        case .idle:
+            EmptyView()
+        }
+    }
+
+    private func refreshTools() {
+        Task.detached(priority: .utility) {
+            let found = DownloadService.tools()
+            await MainActor.run {
+                tools = found
+                toolsChecked = true
+            }
+        }
+    }
+
+    private func start() {
+        guard !trimmedLink.isEmpty, !service.isRunning else { return }
+        service.startManaged(link: trimmedLink, format: store.settings.downloadFormat,
                              destination: store.settings.downloadDestination,
                              autoUpdate: store.settings.downloaderAutoUpdate)
     }

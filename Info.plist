@@ -4,11 +4,6 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
-	<key>CFBundleLocalizations</key>
-	<array>
-		<string>tr</string>
-		<string>en</string>
-	</array>
 	<key>CFBundleDisplayName</key>
 	<string>Hâl</string>
 	<key>CFBundleExecutable</key>
@@ -19,6 +14,11 @@
 	<string>dev.sungur.Hal</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>tr</string>
+		<string>en</string>
+	</array>
 	<key>CFBundleName</key>
 	<string>Hâl</string>
 	<key>CFBundlePackageType</key>
@@ -26,34 +26,34 @@
 	<key>CFBundleShortVersionString</key>
 	<string>1.1.0</string>
 	<key>CFBundleVersion</key>
-	<string>2</string>
-	<key>SUFeedURL</key>
-	<string>https://raw.githubusercontent.com/tahsingibi/hal/main/appcast.xml</string>
-	<key>SUPublicEDKey</key>
-	<string>Of5vxDC45Ia5xZArIZs6cr1fToXB4skNCyQzz8lnQTk=</string>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
-	<key>SUAutomaticallyUpdate</key>
-	<false/>
-	<key>SUScheduledCheckInterval</key>
-	<integer>86400</integer>
+	<string>3</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<true/>
-	<key>NSHighResolutionCapable</key>
-	<true/>
-	<key>NSSupportsAutomaticTermination</key>
-	<false/>
-	<key>NSSupportsSuddenTermination</key>
-	<false/>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Uygulama sesini ayrı kısabilmek için çalan programın sesi okunur. Kayıt tutulmaz.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Yaklaşan toplantılarını panoda göstermek için takvimin okunur. İzin yalnızca sen Ayarlar’dan istediğinde sorulur.</string>
 	<key>NSCalendarsUsageDescription</key>
 	<string>Yaklaşan toplantılarını panoda göstermek için takvimin okunur.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Namaz vakitlerini bulunduğun konuma göre göstermek için konumun kullanılır.</string>
-	<key>NSAudioCaptureUsageDescription</key>
-	<string>Uygulama sesini ayrı kısabilmek için çalan programın sesi okunur. Kayıt tutulmaz.</string>
+	<key>NSSupportsAutomaticTermination</key>
+	<false/>
+	<key>NSSupportsSuddenTermination</key>
+	<false/>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/tahsingibi/hal/main/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>Of5vxDC45Ia5xZArIZs6cr1fToXB4skNCyQzz8lnQTk=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>

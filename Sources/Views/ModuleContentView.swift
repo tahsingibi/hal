@@ -1,436 +1,54 @@
 import AppKit
 import SwiftUI
 
+/// A tab the panel adds to a module's own tab row.
+struct HostPage {
+    let id: String
+    let title: String
+    let content: AnyView
+}
+
+/// One module's content, embedded in a panel section. The panel owns the
+/// navigation, the section header and the settings button.
 struct DetailPopoverView: View {
     @EnvironmentObject private var store: AppStore
+    let embeddedModule: ModuleKind
+    var hostPages: [HostPage] = []
     var onSettings: (SettingsTab) -> Void
+    var onNavigate: (String) -> Void = { _ in }
     @State private var loginHint: String?
-    @State private var pageHeights: [String: CGFloat] = [:]
-    @State private var pane: PopoverPane = .board
-    @State private var tool: PopoverTool?
-
-    private enum PopoverPane: Hashable {
-        case board, wake, sound, tools
-    }
-
-    private enum PopoverTool: Hashable {
-        case updates, homebrew, downloader, ports, displays
-    }
-
-    private var pages: [ModulePage] { store.allPages }
-    private var selected: DetailTarget {
-        store.selection ?? pages.first?.target ?? DetailTarget(module: .usage)
-    }
-    private var module: ModuleKind { store.selectedModule }
-    private var pageWidth: CGFloat { MenuBarLayout.popoverPageWidth }
-    private var panelHeight: CGFloat { min(380, MenuBarLayout.popoverMaxContentHeight) }
+    @State private var pageID = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: store.settings.compactPanel ? 7 : 12) {
-            HStack {
-                Spacer()
-                BrandMark(icon: .app, size: 22)
-                Spacer()
+        let pages = store.pages(for: embeddedModule)
+        let tabs = hostPages.map { (id: $0.id, title: $0.title) } + pages.map { (id: $0.id, title: $0.title) }
+        let selected = tabs.contains(where: { $0.id == pageID }) ? pageID : (tabs.first?.id ?? "")
+        VStack(alignment: .leading, spacing: 12) {
+            if tabs.count > 1 {
+                PersonalTabBar(items: tabs.map { PersonalTabBar<String>.Item(id: $0.id, title: $0.title) },
+                               selection: Binding(get: { selected }, set: { pageID = $0 }))
             }
-            iconRail
-            if pane == .board { moduleRail }
-            sectionHeader
-            card
-            if let loginHint, pane == .board {
-                Text(loginHint)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            footer
-        }
-        .padding(12)
-        .frame(width: MenuBarLayout.popoverWidth, alignment: .topLeading)
-        .environment(\.locale, Language.locale)
-        .environment(\.toolPresentation, .menu)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .onChange(of: store.boardToken) { _, _ in
-            pane = .board
-            tool = nil
-        }
-    }
-
-    private var iconRail: some View {
-        HStack(spacing: 4) {
-            railButton("square.grid.2x2", help: L("Pano", "Board"), selected: pane == .board) { pane = .board; tool = nil }
-            railButton("speaker.wave.2", help: L("Ses", "Sound"), selected: pane == .sound) { pane = .sound; tool = nil }
-            railButton("moon.zzz", help: L("Uyanık tut", "Keep awake"), selected: pane == .wake) { pane = .wake; tool = nil }
-            railButton("wrench.and.screwdriver", help: L("Araçlar", "Tools"), selected: pane == .tools) { pane = .tools; tool = nil }
-        }
-        .padding(5)
-        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 13))
-        .overlay(RoundedRectangle(cornerRadius: 13).strokeBorder(Color.primary.opacity(0.07)))
-    }
-
-    private var moduleRail: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 5) {
-                    ForEach(store.modules) { item in
-                        Button { store.selectModule(item) } label: {
-                            Label(item.title, systemImage: item.symbol)
-                                .font(.system(size: 11, weight: .medium))
-                                .padding(.horizontal, 9).padding(.vertical, 6)
-                                .foregroundStyle(module == item ? Color.accentColor : Color.secondary)
-                                .background(module == item ? Color.accentColor.opacity(0.12) : Color.clear, in: Capsule())
-                        }.buttonStyle(.plain).id(item.id)
-                    }
-                }
-            }
-            .onAppear { proxy.scrollTo(module.id, anchor: .center) }
-            .onChange(of: module) { _, value in withAnimation { proxy.scrollTo(value.id, anchor: .center) } }
-        }
-    }
-
-    private func railButton(_ symbol: String, help: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: symbol).font(.system(size: 17, weight: .medium))
-
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 34)
-            .foregroundStyle(selected ? Color.accentColor : Color.secondary)
-            .background(selected ? Color.accentColor.opacity(0.14) : Color.clear, in: RoundedRectangle(cornerRadius: 9))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(help)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    private var sectionHeader: some View {
-        HStack(spacing: 6) {
-            if pane == .tools, tool != nil {
-                Button {
-                    tool = nil
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-            Text(sectionTitle)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-                .tracking(0.5)
-            Spacer()
-            iconButton("slider.horizontal.3", help: L("Bölüm ayarları", "Section settings")) { onSettings(settingsDestination) }
-            if pane == .board {
-                iconButton(
-                    store.pinned ? "pin.fill" : "pin",
-                    help: store.pinned
-                        ? L("Sabit: pencere dışarı tıklayınca kapanmaz. Kaldırmak için tıkla.",
-                            "Pinned: window stays open when you click outside. Click to unpin.")
-                        : L("Sabitle: pencere dışarı tıklayınca kapanmasın",
-                            "Pin: keep window open when clicking outside"),
-                    active: store.pinned,
-                    action: store.togglePinned
-                )
-                iconButton("arrow.clockwise", help: L("Kotaları ve vakitleri yenile", "Refresh quotas and prayer times")) {
-                    loginHint = nil
-                    Task { await store.refresh() }
-                }
-            }
-        }
-    }
-
-    private var sectionTitle: String {
-        switch pane {
-        case .board:
-            return headerTitle
-        case .wake:
-            return L("Uyanık tut", "Keep awake")
-        case .sound:
-            return L("Ses mikseri", "Volume mixer")
-        case .tools:
-            return toolTitle ?? L("Araçlar", "Tools")
-        }
-    }
-
-    private var toolTitle: String? {
-        switch tool {
-        case .updates: return L("Güncellemeler", "Updates")
-        case .homebrew: return "Homebrew"
-        case .downloader: return L("İndirici", "Downloader")
-        case .ports: return L("Portlar", "Ports")
-        case .displays: return L("Ekran parlaklığı", "Display brightness")
-        case nil: return nil
-        }
-    }
-
-    private var card: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            switch pane {
-            case .board:
-                if modulePages.count > 1 {
-                    pageChips
-                }
-                pager
-            case .wake:
-                ScrollView { KeepAwakePanel { onSettings(.focus) } }.frame(maxHeight: panelHeight)
-            case .sound:
-                VolumeMixerPanel()
-                    .frame(maxHeight: panelHeight)
-            case .tools:
-                if let tool {
-                    if tool == .downloader {
-                        toolDetail(tool)
-                    } else {
-                        toolDetail(tool)
-                            .frame(height: panelHeight)
-                    }
-                } else {
-                    toolList
-                }
-            }
-        }
-        .padding(pane == .tools && tool == nil ? 0 : pane == .board ? 10 : 12)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color.primary.opacity(pane == .tools && tool == nil ? 0 : 0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private var toolList: some View {
-        ScrollView {
-        VStack(alignment: .leading, spacing: store.settings.compactPanel ? 6 : 9) {
-            toolRow("arrow.triangle.2.circlepath", L("Uygulama güncellemeleri", "App updates")) { tool = .updates }
-            toolRow("shippingbox", "Homebrew") { tool = .homebrew }
-            toolRow("arrow.down.circle", L("İndirici", "Downloader")) { tool = .downloader }
-            toolRow("network", L("Portlar", "Ports")) { tool = .ports }
-            toolRow("sun.max", L("Ekran parlaklığı", "Display brightness")) { tool = .displays }
-            toolRow("macwindow.on.rectangle", L("Pencere değiştirici", "Window switcher")) { onSettings(.switcher) }
-            HStack(spacing: 8) {
-                Image(systemName: "sparkles")
-                    .frame(width: 18)
-                    .foregroundStyle(Color.accentColor)
-                Text(store.settings.resolvedCleaningMenuTitle)
-                    .font(.system(size: 13))
-                    .lineLimit(1)
-                Spacer()
-                Toggle("", isOn: Binding(
-                    get: { store.cleaningMode },
-                    set: { store.setCleaningMode($0) }
-                ))
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.small)
-            }
-            .padding(12)
-            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 11))
-            if let message = store.cleaningMessage, store.cleaningMode || !DeviceModes.shared.accessibilityTrusted {
-                Text(message)
-                    .font(.system(size: 11))
+            if let host = hostPages.first(where: { $0.id == selected }) {
+                host.content
+            } else if let page = pages.first(where: { $0.id == selected }) ?? pages.first {
+                body(for: page)
+            } else if embeddedModule == .usage {
+                Text(L("Gösterilecek kota yok. Ayarlar > Kotalar’dan bir sağlayıcı aç.",
+                       "No quotas to show. Turn on a provider in Settings > Quotas."))
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .onAppear {
+            if let selection = store.selection, selection.module == embeddedModule,
+               tabs.contains(where: { $0.id == selection.id }) { pageID = selection.id }
+            else if pageID.isEmpty { pageID = tabs.first?.id ?? "" }
         }
-        .frame(height: store.settings.compactPanel ? 300 : min(410, MenuBarLayout.popoverMaxContentHeight))
-    }
-
-    private func toolRow(_ symbol: String, _ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: symbol)
-                    .frame(width: 18)
-                    .foregroundStyle(Color.accentColor)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary)
-                    if !store.settings.compactPanel {
-                        Text(toolDescription(symbol)).font(.system(size: 11)).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(12)
-            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 11))
-            .overlay(RoundedRectangle(cornerRadius: 11).strokeBorder(Color.primary.opacity(0.08)))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func toolDescription(_ symbol: String) -> String {
-        switch symbol {
-        case "arrow.triangle.2.circlepath": return SettingsTab.updates.subtitle
-        case "shippingbox": return SettingsTab.homebrew.subtitle
-        case "arrow.down.circle": return SettingsTab.downloader.subtitle
-        case "sun.max": return SettingsTab.displays.subtitle
-        case "macwindow.on.rectangle": return SettingsTab.switcher.subtitle
-        default: return SettingsTab.ports.subtitle
+        .onChange(of: store.selection) { _, selection in
+            if let selection, selection.module == embeddedModule { pageID = selection.id }
         }
     }
-
-    @ViewBuilder
-    private func toolDetail(_ tool: PopoverTool) -> some View {
-        switch tool {
-        case .updates:
-            UpdatesPanel()
-        case .homebrew:
-            HomebrewPanel()
-        case .downloader:
-            DownloaderForm(showsFolder: true)
-        case .ports:
-            PortsPanel(showsTitle: false)
-        case .displays:
-            DisplayQuickPanel { onSettings(.displays) }
-        }
-    }
-
-    private var footer: some View {
-        HStack(spacing: 8) {
-            Button {
-                onSettings(settingsDestination)
-            } label: {
-                Label(L("Ayarlar", "Settings"), systemImage: "gearshape")
-                    .frame(maxWidth: .infinity)
-            }
-            Button {
-                NSApp.terminate(nil)
-            } label: {
-                Label(L("Çık", "Quit"), systemImage: "power")
-                    .frame(maxWidth: .infinity)
-            }
-        }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-    }
-
-    private var settingsDestination: SettingsTab {
-        switch pane {
-        case .board:
-            switch module {
-            case .today: return .features
-            case .focus: return .focus
-            case .usage: return .quota
-            case .prayer: return .worship
-            case .calendar: return .calendar
-            case .fitness: return .fitness
-            case .money: return .money
-            }
-        case .wake:
-            return .wake
-        case .sound:
-            return .mixer
-        case .tools:
-            switch tool {
-            case .updates: return .updates
-            case .homebrew: return .homebrew
-            case .downloader: return .downloader
-            case .ports: return .ports
-            case .displays: return .displays
-            case nil: return .features
-            }
-        }
-    }
-
-    private var modulePages: [ModulePage] {
-        pages.filter { $0.module == module }
-    }
-
-    private var selectedPage: Binding<String> {
-        Binding(
-            get: {
-                let ids = pages.map(\.id)
-                return ids.contains(selected.id) ? selected.id : (ids.first ?? selected.id)
-            },
-            set: { id in
-                guard let page = pages.first(where: { $0.id == id }) else { return }
-                store.select(page.target)
-            }
-        )
-    }
-
-    /// Seçili modülün sayfaları arasında geçiş.
-    private var pageChips: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(modulePages) { page in
-                        let on = selected == page.target
-                        Button {
-                            store.select(page.target)
-                        } label: {
-                            HStack(spacing: 5) {
-                                if page.module != .today && page.module != .fitness {
-                                    BrandMark(icon: page.icon, size: 11)
-                                }
-                                Text(page.title)
-                                    .font(.system(size: 11, weight: .medium))
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(
-                                on ? Color.accentColor.opacity(0.16) : Color.primary.opacity(0.04),
-                                in: Capsule()
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .id(page.id)
-                    }
-                }
-            }
-            .onChange(of: store.selection) { _, target in
-                guard let target else { return }
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    proxy.scrollTo(target.id, anchor: .center)
-                }
-            }
-        }
-    }
-
-    /// Popover yüksekliği seçili sayfaya göre ayarlanır: kısa sayfa boşluk bırakmaz,
-    /// uzun sayfa ekranı taşırmaz — sınırı aşınca sayfa kendi içinde kayar.
-    ///
-    /// Ölçüm henüz gelmediyse (ilk kare) yükseklik sabitlenmez; dıştaki
-    /// `maxHeight` yine de taşmayı engeller. Böylece en kötü durumda eski
-    /// davranışa düşeriz, kırpılmış bir pencereye değil.
-    private var pagerHeight: CGFloat? {
-        guard let natural = pageHeights[selected.id] else { return nil }
-        return min(max(natural, MenuBarLayout.popoverMinContentHeight), MenuBarLayout.popoverMaxContentHeight)
-    }
-
-    private var pager: some View {
-        SwipePager(items: pages.map(\.id), selection: selectedPage, pageWidth: pageWidth) { id in
-            Group {
-                if let page = pages.first(where: { $0.id == id }) {
-                    body(for: page)
-                } else {
-                    Text(L("İçerik yok", "Nothing here")).font(.system(size: 12)).foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            // ScrollView içinde ölçüm doğal yüksekliği verir; dıştaki çerçeveye
-            // bağlı olmadığı için döngü oluşmaz.
-            .background(
-                GeometryReader { geo in
-                    Color.clear.preference(key: PageHeightKey.self, value: [id: geo.size.height])
-                }
-            )
-        }
-        .frame(height: pagerHeight)
-        .frame(
-            minHeight: MenuBarLayout.popoverMinContentHeight,
-            maxHeight: MenuBarLayout.popoverMaxContentHeight
-        )
-        .onPreferenceChange(PageHeightKey.self) { heights in
-            pageHeights.merge(heights) { _, new in new }
-        }
-    }
-
-    /// Sayfa görünümü. Yeni modül eklerken buraya bir `case` gelir.
     @ViewBuilder
     private func body(for page: ModulePage) -> some View {
         switch page.module {
@@ -678,7 +296,7 @@ struct DetailPopoverView: View {
                 }
             }
 
-            if store.settings.trackIntake {
+            if store.settings.isModuleEnabled(.fitness), store.settings.trackIntake {
                 intakeControls
             }
         }
@@ -700,22 +318,16 @@ struct DetailPopoverView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             Spacer(minLength: 8)
-            Text(line.value)
-                .font(.system(size: 12, weight: .medium))
-                .lineLimit(1)
-            if let detail = line.detail {
-                Text(detail)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .layoutPriority(-1)
-            }
+            RowValue(value: line.value, detail: line.detail)
         }
         .padding(.vertical, 5)
 
         return Group {
             if let target = line.target {
-                Button { store.select(target) } label: { content.contentShape(Rectangle()) }
+                Button {
+                    store.select(target)
+                    if target.module == embeddedModule { pageID = target.id } else { onNavigate(target.id) }
+                } label: { content.contentShape(Rectangle()) }
                     .buttonStyle(.plain)
             } else {
                 content
@@ -1063,46 +675,37 @@ struct DetailPopoverView: View {
         }
     }
 
-    private var selectedPageModel: ModulePage? {
-        pages.first { $0.target == selected }
-    }
 
-    private var headerTitle: String {
-        guard let page = selectedPageModel else { return module.title }
-        return page.module == .usage ? Lf("%1$@ kotası", "%1$@ quota", page.title) : page.title
-    }
+}
 
-    private func iconButton(
-        _ icon: String,
-        help: String,
-        active: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(active ? Color.accentColor : Color.secondary)
-                .frame(width: 20, height: 20)
-                .background(
-                    active ? Color.accentColor.opacity(0.15) : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 5, style: .continuous)
-                )
+/// A row's value with its note: side by side when both fit, otherwise the
+/// note goes under the value and a long value wraps instead of being cut.
+struct RowValue: View {
+    let value: String
+    let detail: String?
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                valueText.lineLimit(1)
+                if let detail { detailText(detail).lineLimit(1) }
+            }
+            .fixedSize()
+            VStack(alignment: .trailing, spacing: 1) {
+                valueText
+                    .lineLimit(2)
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let detail { detailText(detail).lineLimit(1) }
+            }
         }
-        .buttonStyle(.plain)
-        .help(help)
+    }
+
+    private var valueText: some View {
+        Text(value).font(.system(size: 12, weight: .medium))
+    }
+
+    private func detailText(_ text: String) -> some View {
+        Text(text).font(.system(size: 10)).foregroundStyle(.tertiary)
     }
 }
-
-extension Notification.Name {
-    static let halOpenSettings = Notification.Name("hal.openSettings")
-}
-
-/// Sayfa başına doğal yükseklik; popover'ı seçili sayfaya göre boyutlandırmak için.
-private struct PageHeightKey: PreferenceKey {
-    static let defaultValue: [String: CGFloat] = [:]
-
-    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
-        value.merge(nextValue()) { _, new in new }
-    }
-}
-

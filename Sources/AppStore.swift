@@ -59,7 +59,11 @@ final class AppStore: ObservableObject {
     private var tickTimer: Timer?
     private var refreshTimer: Timer?
 
+    /// Whether this process started with no saved settings at all: a fresh install.
+    private(set) static var startedFresh = false
+
     init() {
+        Self.startedFresh = UserDefaults.standard.data(forKey: "hal.settings") == nil
         self.settings = Self.loadSettings()
         if !UserDefaults.standard.bool(forKey: "hal.migrated.quotaTicker.v1") {
             self.settings.menuBarCollapsed = true

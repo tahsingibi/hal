@@ -12,6 +12,7 @@ final class WindowSwitcher: ObservableObject {
     @Published private(set) var accessibilityGranted = AXIsProcessTrusted()
     @Published private(set) var captureGranted = CGPreflightScreenCaptureAccess()
     @Published private(set) var shortcutError: String?
+    @Published private(set) var inputLive = false
     @Published private(set) var loading = false
     @Published var query = ""
     @Published var selectedID: String?
@@ -41,6 +42,8 @@ final class WindowSwitcher: ObservableObject {
     private let thumbnails = SwitcherThumbnails()
     private let nativeKeys = SwitcherSystemKeys()
     private var secureInputTimer: Timer?
+    private var fallbackReleaseTimer: Timer?
+    private var lastPermissionCheck: TimeInterval = 0
     private var placementFrame = CGRect.zero
     private var hoveredID: String?
     private var hoverAnchor = NSPoint.zero
@@ -50,6 +53,8 @@ final class WindowSwitcher: ObservableObject {
         SwitcherInput.shared.onAction = { [weak self] action in self?.handle(action) }
         SwitcherInput.shared.onAvailability = { [weak self] available in
             guard let self else { return }
+            self.inputLive = available
+            if available { self.shortcutError = nil }
             self.registerFallback(enabled: !available)
             self.nativeKeys.sync(self.preferences, recording: self.recording, live: available)
         }
@@ -95,6 +100,19 @@ final class WindowSwitcher: ObservableObject {
             let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
                 Task { @MainActor in
                     guard let self else { return }
+                    let now = ProcessInfo.processInfo.systemUptime
+                    if now - self.lastPermissionCheck >= 2 {
+                        self.lastPermissionCheck = now
+                        let wasGranted = self.accessibilityGranted
+                        self.refreshPermissions()
+                        if SwitcherInput.shouldReconnect(permissionGranted: self.accessibilityGranted,
+                                                         wasGranted: wasGranted,
+                                                         live: SwitcherInput.shared.isLive,
+                                                         recording: self.recording,
+                                                         secureInput: IsSecureEventInputEnabled()) {
+                            self.updateInput()
+                        }
+                    }
                     self.nativeKeys.sync(self.preferences, recording: self.recording, live: SwitcherInput.shared.isLive)
                     if IsSecureEventInputEnabled(), self.sessionActive { self.hide() }
                 }
@@ -110,6 +128,7 @@ final class WindowSwitcher: ObservableObject {
     }
     private func updateInput() {
         SwitcherInput.shared.configure(preferences)
+        inputLive = SwitcherInput.shared.isLive
         if !SwitcherInput.shared.isLive { registerFallback(enabled: true) }
         nativeKeys.sync(preferences, recording: recording, live: SwitcherInput.shared.isLive)
     }
@@ -119,20 +138,31 @@ final class WindowSwitcher: ObservableObject {
     private func registerFallback(enabled: Bool) {
         unregisterHotKeys()
         guard enabled, preferences.enabled, !recording else { return }
+        shortcutError = nil
         if hotKeyHandler == nil {
-            var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+            let specs = [kEventHotKeyPressed, kEventHotKeyReleased].map {
+                EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32($0))
+            }
             InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
                 guard let event else { return OSStatus(eventNotHandledErr) }
                 var id = EventHotKeyID()
                 guard GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &id) == noErr,
                       id.signature == 0x48414C57, let scope = SwitcherScope(rawValue: Int(id.id)) else { return OSStatus(eventNotHandledErr) }
+                let pressed = GetEventKind(event) == UInt32(kEventHotKeyPressed)
                 Task { @MainActor in
                     let switcher = WindowSwitcher.shared
                     guard let key = switcher.preferences.shortcuts.first(where: { $0.0 == scope })?.1 else { return }
-                    switcher.begin(scope, key: key, reversed: NSEvent.modifierFlags.contains(.shift), pinned: false)
+                    if pressed {
+                        switcher.begin(scope, key: key, reversed: NSEvent.modifierFlags.contains(.shift), pinned: false)
+                    } else if !switcher.searchPinned, switcher.activeKey == key,
+                              SwitcherInput.shouldCommit(flags: UInt64(NSEvent.modifierFlags.rawValue), required: key.holdMask, pinned: false) {
+                        // Carbon still works without an event tap. It must also
+                        // finish a quick press released before the panel opens.
+                        switcher.commit()
+                    }
                 }
                 return noErr
-            }, 1, &spec, nil, &hotKeyHandler)
+            }, specs.count, specs, nil, &hotKeyHandler)
         }
         for (scope, key) in preferences.shortcuts {
             guard key.isValid, !key.isSystem else { continue }
@@ -165,6 +195,21 @@ final class WindowSwitcher: ObservableObject {
         sessionWindows = []; windows = []; hoveredID = nil; hoverAnchor = NSEvent.mouseLocation
         placementFrame = screenForSession().visibleFrame
         updateRouting()
+        if let key, !pinned, !SwitcherInput.shared.isLive {
+            // A Carbon key-up can arrive while Option is still held. Watch
+            // modifier release for this session, including before first draw.
+            let timer = Timer(timeInterval: 0.03, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if SwitcherInput.shouldCommit(flags: UInt64(NSEvent.modifierFlags.rawValue),
+                                                  required: key.holdMask, pinned: self.searchPinned) {
+                        self.commit()
+                    }
+                }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            fallbackReleaseTimer = timer
+        }
         let show = DispatchWorkItem { [weak self] in
             guard let self, self.generation == ticket, self.sessionActive, !self.pendingCommit else { return }
             self.show()
@@ -345,6 +390,7 @@ final class WindowSwitcher: ObservableObject {
         resize()
     }
     private func commit() {
+        fallbackReleaseTimer?.invalidate(); fallbackReleaseTimer = nil
         guard sessionActive else { return }
         if loading { pendingCommit = true; showTask?.cancel(); return }
         activateSelected()
@@ -381,6 +427,7 @@ final class WindowSwitcher: ObservableObject {
         sessionWindows.removeAll { $0.pid == pid }; windows = sessionWindows; reconcileSearch()
     }
     func hide() {
+        fallbackReleaseTimer?.invalidate(); fallbackReleaseTimer = nil
         generation += 1; cancellation.set(generation); sessionActive = false
         showTask?.cancel(); showTask = nil; thumbnails.cancel(); pendingCommit = false; loading = false
         panel?.orderOut(nil); previews = [:]; query = ""; searchPinned = false

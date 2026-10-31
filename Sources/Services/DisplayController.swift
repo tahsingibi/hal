@@ -25,15 +25,31 @@ final class DisplayController: ObservableObject {
     private var wakeObserver: Any?
     private typealias GetBrightness = @convention(c) (UInt32, UnsafeMutablePointer<Float>) -> Int32
     private typealias SetBrightness = @convention(c) (UInt32, Float) -> Int32
+    private typealias CanChange = @convention(c) (UInt32) -> Bool
     private let handle: UnsafeMutableRawPointer?
     private let readBrightness: GetBrightness?
     private let writeBrightness: SetBrightness?
+    private let canChangeBrightness: CanChange?
+    /// External monitors driven over DDC/CI, and their last known level.
+    private var ddc: [CGDirectDisplayID: DDCControl] = [:]
+    private var ddcDisplays: Set<CGDirectDisplayID> = []
+    private var ddcLevels: [CGDirectDisplayID: Double] = [:]
 
     private init() {
         let handle = dlopen("/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices", RTLD_LAZY)
         self.handle = handle
         readBrightness = handle.flatMap { dlsym($0, "DisplayServicesGetBrightness") }.map { unsafeBitCast($0, to: GetBrightness.self) }
         writeBrightness = handle.flatMap { dlsym($0, "DisplayServicesSetBrightness") }.map { unsafeBitCast($0, to: SetBrightness.self) }
+        canChangeBrightness = handle.flatMap { dlsym($0, "DisplayServicesCanChangeBrightness") }.map { unsafeBitCast($0, to: CanChange.self) }
+    }
+
+    /// Whether the system itself can set this display's brightness. Monitors
+    /// the system cannot drive still answer a read with a made-up value, which
+    /// is how an external display used to show 50% at launch.
+    private func systemControls(_ id: CGDirectDisplayID) -> Bool {
+        guard writeBrightness != nil else { return false }
+        if let canChangeBrightness { return canChangeBrightness(id) }
+        return CGDisplayIsBuiltin(id) != 0
     }
 
     func apply(enabled: Bool) {
@@ -61,12 +77,42 @@ final class DisplayController: ObservableObject {
         let active = Set(NSScreen.screens.map(\.displayID))
         for id in Array(overlays.keys) where !active.contains(id) { overlays.removeValue(forKey: id)?.orderOut(nil) }
         for id in Array(originals.keys) where !active.contains(id) { originals.removeValue(forKey: id); lastWritten.removeValue(forKey: id) }
+        let externals = NSScreen.screens.map(\.displayID).filter { !systemControls($0) }
+        if Set(externals) != ddcDisplays {
+            ddcDisplays = Set(externals)
+            ddc = DDCControl.controls(forExternalDisplays: externals)
+            ddcLevels = ddcLevels.filter { ddc[$0.key] != nil }
+        }
         displays = NSScreen.screens.map { screen in
             let id = screen.displayID
-            var brightness: Float = 1
-            let hardware = readBrightness?(id, &brightness) == 0 && writeBrightness != nil
-            let value = hardware ? Double(brightness) : 1 - Double(overlays[id]?.alphaValue ?? 0)
-            return DisplayBrightness(id: id, name: screen.localizedName, builtIn: CGDisplayIsBuiltin(id) != 0, hardware: hardware, value: value)
+            let name = screen.localizedName
+            let builtIn = CGDisplayIsBuiltin(id) != 0
+            if systemControls(id) {
+                var brightness: Float = 1
+                let read = readBrightness?(id, &brightness) == 0
+                return DisplayBrightness(id: id, name: name, builtIn: builtIn, hardware: true,
+                                         value: read ? Double(brightness) : 1)
+            }
+            if ddc[id] != nil {
+                if ddcLevels[id] == nil { readDDC(id) }
+                return DisplayBrightness(id: id, name: name, builtIn: builtIn, hardware: true, value: ddcLevels[id] ?? 1)
+            }
+            return DisplayBrightness(id: id, name: name, builtIn: builtIn, hardware: false,
+                                     value: 1 - Double(overlays[id]?.alphaValue ?? 0))
+        }
+    }
+
+    /// The monitor answers in tens of milliseconds, so the reading happens off
+    /// the main thread and the slider follows once it arrives.
+    private func readDDC(_ id: CGDirectDisplayID) {
+        guard let control = ddc[id] else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let level = control.readBrightness()
+            Task { @MainActor [weak self] in
+                guard let self, let level else { return }
+                self.ddcLevels[id] = level
+                if let index = self.displays.firstIndex(where: { $0.id == id }) { self.displays[index].value = level }
+            }
         }
     }
 
@@ -80,7 +126,10 @@ final class DisplayController: ObservableObject {
         let display = displays[index]
         let level = Self.clampedLevel(value, hardware: display.hardware)
         error = nil
-        if display.hardware {
+        if let control = ddc[id] {
+            control.setBrightness(level)
+            ddcLevels[id] = level
+        } else if display.hardware {
             if originals[id] == nil {
                 var current: Float = Float(display.value)
                 if readBrightness?(id, &current) == 0 { originals[id] = current }

@@ -19,6 +19,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     private var extras: [Extra] = []
     private var popover = NSPopover()
     private var settingsWindow: NSWindow?
+    private var welcomeWindow: NSWindow?
     private var downloaderWindow: NSWindow?
     private var portsWindow: NSWindow?
     private var homebrewWindow: NSWindow?
@@ -79,6 +80,45 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow = window
+    }
+
+    /// First launch only. Someone updating from an earlier version already
+    /// chose their modules, so the window is skipped for them.
+    func showWelcomeIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: WelcomeView.seenKey) else { return }
+        guard AppStore.startedFresh || defaults.object(forKey: "hal.firstLaunchPending") != nil else {
+            defaults.set(true, forKey: WelcomeView.seenKey)
+            return
+        }
+        defaults.set(true, forKey: "hal.firstLaunchPending")
+        showWelcome()
+    }
+
+    func showWelcome() {
+        if let welcomeWindow {
+            welcomeWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let controller = NSHostingController(rootView: WelcomeView { [weak self] in
+            UserDefaults.standard.set(true, forKey: WelcomeView.seenKey)
+            UserDefaults.standard.removeObject(forKey: "hal.firstLaunchPending")
+            self?.welcomeWindow?.close()
+            self?.welcomeWindow = nil
+        }.environmentObject(store))
+        controller.sizingOptions = [.preferredContentSize]
+        let window = NSWindow(contentViewController: controller)
+        window.title = L("Hâl’e hoş geldin", "Welcome to Hâl")
+        window.styleMask = [.titled, .closable, .fullSizeContentView]
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.isMovableByWindowBackground = true
+        window.isReleasedWhenClosed = false
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        welcomeWindow = window
     }
 
     func openDownloader() {
@@ -162,7 +202,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         popover.behavior = .applicationDefined
         popover.animates = true
         popover.delegate = self
-        let controller = NSHostingController(rootView: DetailPopoverView(onSettings: { [weak self] tab in
+        let controller = NSHostingController(rootView: HalPanelView(onSettings: { [weak self] tab in
             self?.popover.performClose(nil)
             self?.openSettings(tab: tab)
         }).environmentObject(store))
@@ -170,7 +210,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         // Bu olmadan popover sabit yükseklikte kalıyor ve içerik üst üste biniyor.
         controller.sizingOptions = [.preferredContentSize]
         popover.contentViewController = controller
-        popover.contentSize = NSSize(width: MenuBarLayout.popoverWidth, height: 360)
+        popover.contentSize = NSSize(width: HalPanelView.width, height: 420)
     }
 
     private func observe() {
@@ -214,6 +254,14 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in self?.syncReplicas() }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: .halShowWelcome,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.showWelcome() }
         }
 
         NotificationCenter.default.addObserver(

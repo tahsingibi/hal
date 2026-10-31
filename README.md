@@ -85,16 +85,16 @@ open Hal.app
 
 ## Özellikler ve ayarlar
 
-Vorssaint’in kategorili ayar ve özellik merkezi yaklaşımından esinlenen düzen, Hâl’in kendi modüllerini kullanır:
+Ayarlar penceresi dört başlıkta toplanır:
 
-- **Temel ayarlar:** Genel, Özellikler, İzinler, Görünüm ve Bildirimler.
-- **Çalışma ve enerji:** Odak, Kotalar, Uyanık tutma ve Ses.
-- **Kişisel:** İbadet, Takvim, Sağlık ve Ödemeler.
-- **Araçlar:** İndirici, Portlar, Homebrew ve Güncellemeler.
+- **Uygulama:** Genel, Özellikler, İzinler, Menü çubuğu ve Bildirimler.
+- **Kişisel:** Odak, İbadet, Sağlık ve Ödemeler.
+- **Araçlar:** Kotalar, Takvim, Uyanık tutma, Pencere değiştirici, Ekranlar, Ses, Video indirici, Portlar, Homebrew ve Güncellemeler.
+- **Bilgi:** Hakkında ve Yenilikler.
 
-Özellikler sayfasından modülleri tek tek açabilir veya **Çalışma**, **Günlük yaşam**, **Sade** gruplarını uygulayabilirsin. Kapalı modüller panelden ve ayar kenar çubuğundan kaldırılır; kayıtları korunur. Özellik merkezinden veya ayar aramasından tekrar ulaşabilirsin. Bugün her zaman açıktır.
+Özellikler sayfasından modülleri tek tek açabilir veya hazır grupları uygulayabilirsin. Kapalı modüller panelden ve ayar kenar çubuğundan kaldırılır; kayıtları korunur. Bugün her zaman açıktır.
 
-**Görünüm › Panel düzeni** bölümündeki yukarı/aşağı düğmeleri sekmeleri ve menü çubuğu öğelerini sıralar. Kompakt panel, üst gezinmeyi ve araç kartlarını küçültür. Menü panelinde Pano, Ses, Uyanık Tut ve Araçlar grupları bulunur; modül sekmeleri Pano altında yer alır. İzinler sayfası erişimin amacını ve ilgili ayarlara bağlantıları gösterir; kendiliğinden izin istemez.
+Menü panelinin üstünde tek satıra sığan ikon sekmeleri vardır: Kişisel (Bugün, Odak, İbadet, Sağlık, Ödemeler), Kotalar, Takvim, Video indirici, Uyanık tut, Ekranlar, Ses, Güç, Araçlar ve Kontroller. Sekmelerin sırası ve görünürlüğü **Menü çubuğu › Panel sekmeleri** bölümünden değiştirilir. Panelin altında Ayarlar, Uyanık tut ve Çık düğmeleri durur. İzinler sayfası erişimin amacını ve ilgili ayarlara bağlantıları gösterir; kendiliğinden izin istemez.
 
 Uygulamayı yeniden açmak Özellikler penceresini öne getirir. `./build.sh` çıktıyı bu klasördeki `Hal.app` içine yazar; Applications’a kopyalamaz.
 
@@ -246,7 +246,7 @@ Uygulama sandbox'lı **değildir**. Okuduğu her şey burada:
 
 İndirilen kopya yeni sürümü kendisi sorar; kurulum kendiliğinden yapılmaz. Denetleme günde bir kez yapılır; Ayarlar › Hakkında › _Güncellemeleri denetle_ ile de istenir.
 
-- **Kanal:** `https://raw.githubusercontent.com/tahsingibi/hal/main/appcast.xml`. Uygulama repodaki bu dosyaya bakar. Zip, GitHub Release’e konur; indirme adresi `appcast.xml` içindeki `enclosure` satırındadır. Kanalda **1.1.0** (derleme 2) var.
+- **Kanal:** `https://raw.githubusercontent.com/tahsingibi/hal/main/appcast.xml`. Uygulama repodaki bu dosyaya bakar. Zip, GitHub Release’e konur; indirme adresi `appcast.xml` içindeki `enclosure` satırındadır. Kanalda **1.1.0** (derleme 3) var.
 - **Sparkle:** Paket Sparkle 2.10.0 ile gelir. `build.sh` arşivi indirir ve SHA-256 ile doğrular.
 - **Anahtarlar:** Açık anahtar `SUPublicEDKey` içindedir. Gizli anahtar login anahtarlığındadır (hesap adı `Hal`) ve repoya girmez. Anahtar silinirse bu sürümden sonrakilere güncelleme imzalanamaz.
 - **Bu sürüm:** GitHub Release üzerindeki DMG ve Sparkle zip’i. Uygulama içi denetleme 1.1.0’ı görür.
@@ -287,6 +287,10 @@ Sekmeler ve menü çubuğu ikonları `Sources/Modules.swift` içindeki `ModuleKi
 Uygulamadaki Hakkında sayfası aynı listeyi gösterir.
 
 ### 1.1.0 — 31 Ekim 2026
+
+- Kompakt güç paneli: pil ve sistem grafikleri, adaptör gücü, sıcaklık, sağlık, döngü ve kapasite ayrıntıları
+- Hakkında sayfasından açılabilen tanıtım ekranı
+- Pencere değiştiricide izin durumu, izin sonrası otomatik kısayol bağlantısı ve basılı tut / bırak geçişi
 
 - Uyanık tutma: sayaç, seçili uygulamalar öndeyken, prizde veya harici ekrandayken, kapak kapalıyken
 - Homebrew: arama, kurma, kaldırma, yükseltme, servisi başlatma ve durdurma

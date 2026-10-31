@@ -186,10 +186,13 @@ struct PermissionsView: View {
                            detail: L("Temizlik modunda girişleri engellemek ve pencere değiştiricide pencereleri listeleyip öne getirmek için kullanılır.", "Used to block input during Cleaning mode and to list and focus individual windows in the switcher."),
                            status: accessibilityGranted ? L("İzin verildi", "Granted") : L("İzin verilmedi", "Not granted"),
                            unused: false, tab: .general)
-                permission("rectangle.inset.filled", title: L("Ekran kaydı", "Screen Recording"),
-                           detail: L("Pencere değiştiricinin görsel önizlemeleri için kullanılır. Görüntüler diske kaydedilmez.", "Used for window switcher previews. Images are never saved to disk."),
-                           status: WindowSwitcher.shared.captureGranted ? L("İzin verildi", "Granted") : L("İzin verilmedi", "Not granted"),
-                           unused: false, tab: .switcher)
+                let previewsNeeded = store.settings.switcher.enabled && store.settings.switcher.layout == .previews
+                if previewsNeeded || WindowSwitcher.shared.captureGranted {
+                    permission("rectangle.inset.filled", title: L("Ekran kaydı", "Screen Recording"),
+                               detail: L("Yalnızca pencere değiştiricinin “Pencere önizlemeleri” görünümü için gerekir. Görüntüler diske kaydedilmez. “Büyük simgeler” ya da “Basit liste” görünümünde bu izne gerek yoktur.", "Only needed for the window switcher’s “Window previews” layout. Images are never saved to disk. The “Large icons” and “Simple list” layouts don’t need it."),
+                               status: WindowSwitcher.shared.captureGranted ? L("İzin verildi", "Granted") : L("İzin verilmedi", "Not granted"),
+                               unused: WindowSwitcher.shared.captureGranted && !previewsNeeded, tab: .switcher)
+                }
                 permission("speaker.wave.2", title: L("Ses yakalama", "Audio capture"),
                            detail: L("Uygulama bazında ses ayarı için kullanılır. Ses kaydı saklanmaz. İzin, mikserde yakalamayı başlattığında istenir.", "Used for per-app volume control. Audio recordings are never saved. Access is requested when you start capture in the mixer."),
                            status: L("Ses mikseri", "Volume mixer"), unused: false, tab: .mixer)
