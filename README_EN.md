@@ -272,6 +272,18 @@ Tabs and menu bar icons are derived from the `ModuleKind` registry in `Sources/M
 
 The About page in the app shows the same list.
 
+### 1.2.0 — 5 November 2026
+
+- Quotas: Claude and Codex usage is read straight from their CLIs; Keychain prompts are gone and Hâl never refreshes anyone’s sign-in
+- Quotas on one page: plan, time until renewal, a marker for how much of the window has passed and Claude’s weekly usage breakdown
+- Codex resets: how many are banked, when the next one expires and use with a confirmation
+- Cleaning mode rebuilt: the keyboard, system keys, scrolling and gestures are locked; unlock by pressing Esc 5 times or with the Unlock button
+- Cleaning mode: a blackout or a small corner indicator; your title and note stay on screen
+- Settings redesigned: every page shares one layout with icon rows and cards; a collapsible sidebar
+- Window switcher: the chosen window comes forward exactly, and windows on other desktops are found too
+- Window switcher: order follows real use; pressing the shortcut again returns to the previous window
+- Window switcher: ghost and helper windows are filtered out and the list opens much faster
+
 ### 1.1.0 — 31 October 2026
 
 - Compact power panel: battery and system charts, adapter power, temperature, health, cycles and capacity details

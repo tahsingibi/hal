@@ -288,6 +288,18 @@ Sekmeler ve menü çubuğu ikonları `Sources/Modules.swift` içindeki `ModuleKi
 
 Uygulamadaki Hakkında sayfası aynı listeyi gösterir.
 
+### 1.2.0 — 5 Kasım 2026
+
+- Kotalar: Claude ve Codex kotası doğrudan CLI’lerden okunur; anahtar zinciri izin soruları ortadan kalktı ve Hâl hiçbir oturumu yenilemez
+- Kotalar tek sayfada: plan, yenilenmeye kalan süre, pencere süresinin ne kadarının geçtiğini gösteren işaret ve Claude haftalık kullanım dağılımı
+- Codex sıfırlama hakları: kaç hak olduğu, sıradakinin ne zaman sona ereceği ve onaylı kullanım
+- Temizlik modu yenilendi: klavye, sistem tuşları, kaydırma ve hareketler kilitlenir; kilidi Esc’ye 5 kez basarak ya da Kilidi aç düğmesiyle açarsın
+- Temizlik modu: karartma ya da köşede küçük gösterge; başlık ve not ekranda kalır
+- Ayarlar yeniden düzenlendi: her sayfa aynı düzende, simgeli satırlar ve kartlar; katlanabilir kenar çubuğu
+- Pencere değiştirici: seçilen pencere tam olarak öne gelir, başka masaüstündeki pencereler de bulunur
+- Pencere değiştirici: sıralama gerçek kullanıma göre; kısayola tekrar basmak önceki pencereye döndürür
+- Pencere değiştirici: hayalet ve yardımcı pencereler listeden çıkarıldı, liste çok daha hızlı açılır
+
 ### 1.1.0 — 31 Ekim 2026
 
 - Kompakt güç paneli: pil ve sistem grafikleri, adaptör gücü, sıcaklık, sağlık, döngü ve kapasite ayrıntıları

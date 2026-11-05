@@ -15,10 +15,7 @@ struct WindowSwitcherSettingsView: View {
                       granted: switcher.captureGranted, action: switcher.requestCapture)
     }
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text(L("Uygulamalar ve pencereler arasında kendi tarzında geçiş yap.", "Switch between apps and windows your way."))
-                    .font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 20) {
                 SettingsCard(title: L("Pencere değiştirici", "Window switcher")) {
                     SettingsToggleRow(title: L("Hâl değiştiricisini kullan", "Use the Hâl switcher"), detail: L("Küçültülmüş pencereler ve aynı uygulamanın birden çok penceresi dahil.", "Includes minimized windows and multiple windows from the same app."), symbol: "macwindow.on.rectangle", isOn: prefs.enabled)
                     if store.settings.switcher.enabled {
@@ -137,7 +134,6 @@ struct WindowSwitcherSettingsView: View {
                         screenRecordingRow
                     }
                 }
-            }.frame(maxWidth: 820).frame(maxWidth: .infinity).padding(24)
         }
         .onChange(of: store.settings.switcher.allWindowsEnabled) { _, enabled in
             if enabled, [store.settings.switcher.appShortcut, store.settings.switcher.windowShortcut].contains(where: { $0.code == store.settings.switcher.allWindowsShortcut.code && $0.holdMask == store.settings.switcher.allWindowsShortcut.holdMask }) {

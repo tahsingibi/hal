@@ -82,7 +82,7 @@ struct HomebrewPanel: View {
     }
 
     var body: some View {
-        ScrollView {
+        PanelScroll {
             VStack(alignment: .leading, spacing: 18) {
                 if brew.brewPath == nil {
                     SettingsCard {
@@ -292,7 +292,7 @@ struct VolumeMixerPanel: View {
     @Environment(\.toolPresentation) private var presentation
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
+        PanelScroll(showsIndicators: false) {
             VStack(alignment: .leading, spacing: presentation == .menu ? 10 : 14) {
                 deviceBlock(
                     symbol: "speaker.wave.2",
@@ -504,7 +504,7 @@ struct UpdatesPanel: View {
     private var groups: [UpdateOrigin] { [.sparkle, .appStore, .brew, .system].filter { origin in updates.items.contains { $0.origin == origin } } }
 
     var body: some View {
-        ScrollView {
+        PanelScroll {
             VStack(alignment: .leading, spacing: 18) {
                 SettingsCard {
                     HStack(spacing: 12) {

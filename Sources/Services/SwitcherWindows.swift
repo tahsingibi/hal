@@ -45,84 +45,295 @@ enum SwitcherWindowQuery {
               AXValueGetValue(unsafeBitCast(s, to: AXValue.self), .cgSize, &size) else { return nil }
         return CGRect(origin: point, size: size)
     }
-    /// Runs on one serial worker, with a per-app IPC timeout and total deadline.
-    static func scan(apps: [SwitcherAppSnapshot], preferences: SwitcherPreferences, accessibility: Bool, screen: CGRect, cancelled: () -> Bool) -> [SwitcherWindow] {
-        let records = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], 0) as? [[String: Any]] ?? []
-        var order: [UInt32: Int] = [:], onScreen = Set<UInt32>(), auxiliary = Set<UInt32>()
-        for (index, record) in records.enumerated() {
-            guard let number = record[kCGWindowNumber as String] as? NSNumber else { continue }
-            order[number.uint32Value] = index
-            if (record[kCGWindowLayer as String] as? NSNumber)?.intValue != 0 { auxiliary.insert(number.uint32Value) }
-            if record[kCGWindowIsOnscreen as String] as? Bool == true { onScreen.insert(number.uint32Value) }
+    /// Bir uygulamanın Erişilebilirlik yanıtındaki tek pencere.
+    struct AXReading {
+        var element: AXUIElement
+        var windowID: CGWindowID?
+        var title: String
+        var minimized: Bool
+        var fullscreen: Bool
+        var frame: CGRect?
+        var userFacing: Bool
+    }
+
+    /// Bir uygulamanın Erişilebilirlik yanıtı. `answered` false ise uygulama
+    /// meşgul ya da kapanıyordur; yanıtı bir pencerenin varlığına ya da
+    /// yokluğuna tanıklık edemez.
+    struct AXReport {
+        var answered = false
+        var windows: [AXReading] = []
+        var timedOut: Set<CGWindowID> = []
+        var byID: [CGWindowID: AXReading] {
+            Dictionary(windows.compactMap { reading in reading.windowID.map { ($0, reading) } },
+                       uniquingKeysWith: { first, _ in first })
         }
-        let visibleSpaces = SwitcherSpaces.visible()
+    }
+
+    /// Pencere listesi pencere sunucusundan kurulur; Erişilebilirlik tanık olarak
+    /// kullanılır. AX başka Space'teki pencereleri yayımlamaz, pencere sunucusu
+    /// ise kapatılmış sekmelerin hayalet yüzeylerini bir süre tutar; ikisi
+    /// birbirinin açığını kapatır. AX okumaları uygulamalar arasında paralel ve
+    /// toplam bir süre sınırıyla yapılır, böylece meşgul bir uygulama listeyi bekletmez.
+    static func scan(apps: [SwitcherAppSnapshot], preferences: SwitcherPreferences, accessibility: Bool,
+                     screen: CGRect, cancelled: @escaping () -> Bool) -> [SwitcherWindow] {
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        let raw = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        let eligible = apps.filter { !preferences.excludedApps.contains($0.bundleID) }
+        let appsByPID = Dictionary(eligible.map { ($0.pid, $0) }, uniquingKeysWith: { first, _ in first })
+        let allIDs = Set(raw.compactMap { ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value })
+        let normalLevel = Set(raw.compactMap { info -> CGWindowID? in
+            guard (info[kCGWindowLayer as String] as? NSNumber)?.intValue == 0 else { return nil }
+            return (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value
+        })
+
+        // Kullanım geçmişini güncel tut: olmayan pencereler düşer, hiç odak
+        // almamış pencereler önden arkaya sırayla en sona yerleşir.
+        let front = SwitcherHistory.frontToBack()
+        var appOrder: [pid_t] = []
+        for entry in front where !appOrder.contains(entry.pid) { appOrder.append(entry.pid) }
+        SwitcherHistory.shared.reconcile(existing: allIDs, frontToBack: front.map(\.id),
+                                         running: Set(apps.map(\.pid)), appOrder: appOrder)
+
+        let reports = accessibility
+            ? readAccessibility(eligible.filter { $0.pid != ownPID }, normalLevel: normalLevel, cancelled: cancelled)
+            : [:]
+        if cancelled() { return [] }
+
+        let visibleSpaces = SwitcherWindowServer.visibleSpaces()
+        let fullscreenSpaces = SwitcherWindowServer.fullscreenSpaces()
+        var spaceCache: [CGWindowID: Set<UInt64>] = [:]
+        var spaceMisses = Set<CGWindowID>()
+        func spaces(_ id: CGWindowID) -> Set<UInt64>? {
+            if let cached = spaceCache[id] { return cached }
+            if spaceMisses.contains(id) { return nil }
+            guard let value = SwitcherWindowServer.spaces(of: id) else { spaceMisses.insert(id); return nil }
+            spaceCache[id] = value
+            return value
+        }
+        func onHiddenSpace(_ id: CGWindowID) -> Bool {
+            guard !visibleSpaces.isEmpty, let set = spaces(id), !set.isEmpty else { return false }
+            return set.isDisjoint(with: visibleSpaces)
+        }
+        func onFullscreenSpace(_ id: CGWindowID) -> Bool {
+            guard !fullscreenSpaces.isEmpty, let set = spaces(id) else { return false }
+            return !set.isDisjoint(with: fullscreenSpaces)
+        }
+
         var windows: [SwitcherWindow] = []
-        for app in apps {
-            if cancelled() { return [] }
-            if preferences.excludedApps.contains(app.bundleID) { continue }
-            let ax = AXUIElementCreateApplication(app.pid)
-            AXUIElementSetMessagingTimeout(ax, 0.12)
-            var hasRealWindow = false
-            if accessibility, let elements = value(ax, kAXWindowsAttribute) as? [AXUIElement] {
-                let deadline = ProcessInfo.processInfo.systemUptime + 0.4
-                for element in elements.prefix(80) {
-                    if cancelled() { return [] }
-                    if ProcessInfo.processInfo.systemUptime > deadline { break }
-                    AXUIElementSetMessagingTimeout(element, 0.035)
-                    let subrole = value(element, kAXSubroleAttribute) as? String
-                    if let subrole, ![kAXStandardWindowSubrole, kAXDialogSubrole, kAXSystemDialogSubrole].contains(subrole) { continue }
-                    let bounds = frame(element)
-                    if let bounds, bounds.width < 80 || bounds.height < 50 { continue }
-                    let title = value(element, kAXTitleAttribute) as? String ?? ""
-                    if title.hasPrefix("Hâl · ") && title.contains(L("Pencere değiştirici", "Window switcher")) { continue }
-                    let id = windowID(element)
-                    if let id, auxiliary.contains(id) { continue }
-                    // Non-visible helper windows with no title are not switch targets.
-                    if title.isEmpty && (id == nil || !onScreen.contains(id!)) { continue }
-                    hasRealWindow = true
-                    let minimized = (value(element, kAXMinimizedAttribute) as? Bool ?? false) || app.hidden
-                    let fullscreen = value(element, "AXFullScreen") as? Bool ?? false
-                    if minimized && preferences.minimized == .hidden { continue }
-                    if fullscreen && !preferences.showFullscreen { continue }
-                    if preferences.currentScreenOnly, let bounds, !screen.intersects(bounds) { continue }
-                    if preferences.currentSpaceOnly, let id {
-                        if let memberships = SwitcherSpaces.spaces(id), !visibleSpaces.isEmpty {
-                            if memberships.isDisjoint(with: visibleSpaces) { continue }
-                        } else if !onScreen.contains(id) { continue }
-                    }
-                    let stableID = id.map { "w:\($0)" } ?? "ax:\(app.pid):\(CFHash(element))"
-                    windows.append(SwitcherWindow(id: stableID, pid: app.pid, bundleID: app.bundleID, appName: app.name,
-                        title: title.isEmpty ? app.name : title, icon: app.icon, element: element, windowID: id,
-                        minimized: minimized, fullscreen: fullscreen, frame: bounds, order: id.flatMap { order[$0] } ?? 10000))
+        var seen = Set<CGWindowID>()
+        /// Penceresi bilerek dışarıda bırakılan uygulamalar "penceresiz" sayılmaz.
+        var withheld = Set<pid_t>()
+
+        func admit(id: CGWindowID, app: SwitcherAppSnapshot, title: String, element: AXUIElement?,
+                   minimized: Bool, fullscreen: Bool, frame: CGRect?, order: Int) {
+            if minimized && preferences.minimized == .hidden { withheld.insert(app.pid); return }
+            if fullscreen && !preferences.showFullscreen { withheld.insert(app.pid); return }
+            if preferences.currentScreenOnly, !minimized, let frame, !screen.intersects(frame) {
+                withheld.insert(app.pid); return
+            }
+            if preferences.currentSpaceOnly, onHiddenSpace(id), !(fullscreen && preferences.showFullscreen) {
+                withheld.insert(app.pid); return
+            }
+            seen.insert(id)
+            windows.append(SwitcherWindow(id: "w:\(id)", pid: app.pid, bundleID: app.bundleID, appName: app.name,
+                                          title: title.isEmpty ? app.name : title, icon: app.icon, element: element,
+                                          windowID: id, minimized: minimized, fullscreen: fullscreen,
+                                          frame: frame, order: order))
+        }
+
+        for (index, info) in raw.enumerated() {
+            if index % 32 == 0, cancelled() { return [] }
+            guard (info[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
+                  let id = (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value, !seen.contains(id),
+                  let pid = (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value,
+                  let app = appsByPID[pid] else { continue }
+            let bounds = (info[kCGWindowBounds as String] as? NSDictionary).flatMap { CGRect(dictionaryRepresentation: $0) }
+            let onScreen = (info[kCGWindowIsOnscreen as String] as? NSNumber)?.boolValue ?? false
+            let serverTitle = info[kCGWindowName as String] as? String ?? ""
+
+            // Hâl'in kendi pencereleri: AX kendi sürecine ana iş parçacığı
+            // dışından sorulmaz; görünen ve başlığı olan pencereler yeter.
+            if pid == ownPID {
+                guard onScreen, !serverTitle.isEmpty,
+                      !serverTitle.contains(L("Pencere değiştirici", "Window switcher")),
+                      let bounds, bounds.width >= 200, bounds.height >= 120 else { continue }
+                admit(id: id, app: app, title: serverTitle, element: nil, minimized: false,
+                      fullscreen: false, frame: bounds, order: index)
+                continue
+            }
+
+            let report = reports[pid]
+            let reading = report?.byID[id]
+            let minimized = (reading?.minimized ?? false) || app.hidden
+            if let bounds, !minimized, bounds.width < 80 || bounds.height < 50 { continue }
+            if let alpha = (info[kCGWindowAlpha as String] as? NSNumber)?.doubleValue, alpha == 0, !minimized { continue }
+
+            let keep: Bool
+            if let reading {
+                keep = reading.userFacing
+            } else if let report, report.answered, !report.timedOut.contains(id) {
+                // Uygulama yanıt verdi ama bu pencereyi saymadı. Yalnızca AX'in
+                // göremediği yerdeki canlı pencereler kalır: gizli uygulamanın
+                // pencereleri ya da başka Space'te sıraya alınmış pencereler.
+                if SwitcherWindowServer.isExcludedFromCycle(id) {
+                    keep = false
+                } else if app.hidden {
+                    keep = !serverTitle.isEmpty || (spaces(id)?.isEmpty == false)
+                } else if onHiddenSpace(id) {
+                    keep = SwitcherWindowServer.isOrderedIn(id) ?? report.windows.isEmpty
+                } else {
+                    keep = false
+                }
+            } else {
+                // Yanıt yok (izin yok, meşgul ya da kapanıyor): pencere sunucusu
+                // karar verir. Ekranda olmayan ve hiçbir Space'e ait olmayan yüzey kalıntıdır.
+                if SwitcherWindowServer.isExcludedFromCycle(id) {
+                    keep = false
+                } else if !onScreen, SwitcherWindowServer.canResolveSpaces, spaces(id)?.isEmpty ?? true {
+                    keep = false
+                } else {
+                    keep = onScreen || !serverTitle.isEmpty || onHiddenSpace(id)
                 }
             }
-            let includeEmpty = !accessibility || preferences.windowless == .all || (preferences.windowless == .finder && app.bundleID == "com.apple.finder")
-            if !hasRealWindow && includeEmpty && (!preferences.currentScreenOnly || !accessibility) {
-                windows.append(SwitcherWindow(id: "app:\(app.pid)", pid: app.pid, bundleID: app.bundleID, appName: app.name,
-                    title: app.name, icon: app.icon, element: nil, windowID: nil, minimized: app.hidden,
-                    fullscreen: false, frame: nil, order: 20000))
+            guard keep else { continue }
+            let title = serverTitle.isEmpty ? (reading?.title ?? "") : serverTitle
+            // Başlıksız, ekranda olmayan ve AX'in tanımadığı yüzeyler çoğunlukla görünmez yardımcılardır.
+            if title.isEmpty && !onScreen && reading == nil && !onHiddenSpace(id) && !app.hidden { continue }
+            let fullscreen = (reading?.fullscreen ?? false) || onFullscreenSpace(id)
+            admit(id: id, app: app, title: title, element: reading?.element, minimized: minimized,
+                  fullscreen: fullscreen, frame: bounds ?? reading?.frame, order: index)
+        }
+
+        // Pencere sunucusunun listesinde olmayan ama AX'in tanıdığı pencereler
+        // (çoğunlukla başka Space'teki tam ekran pencereler).
+        for (pid, report) in reports {
+            guard let app = appsByPID[pid] else { continue }
+            for reading in report.windows where reading.userFacing {
+                guard let id = reading.windowID, !seen.contains(id), !allIDs.contains(id) else { continue }
+                admit(id: id, app: app, title: reading.title, element: reading.element,
+                      minimized: reading.minimized || app.hidden, fullscreen: reading.fullscreen,
+                      frame: reading.frame, order: 5_000)
             }
         }
-        var seen = Set<String>()
-        return windows.sorted { $0.order < $1.order }.filter { seen.insert($0.id).inserted }
-    }
-}
 
-/// Read-only Space membership; no desktop is moved or reconfigured.
-enum SwitcherSpaces {
-    private typealias Connection = @convention(c) () -> UInt32
-    private typealias CopySpaces = @convention(c) (UInt32, Int32, CFArray) -> Unmanaged<CFArray>?
-    private typealias CopyDisplays = @convention(c) (UInt32) -> Unmanaged<CFArray>?
-    private static let connection = SwitcherWindowQuery.symbol("CGSMainConnectionID").map { unsafeBitCast($0, to: Connection.self)() } ?? 0
-    private static let copySpaces = SwitcherWindowQuery.symbol("CGSCopySpacesForWindows").map { unsafeBitCast($0, to: CopySpaces.self) }
-    private static let copyDisplays = SwitcherWindowQuery.symbol("CGSCopyManagedDisplaySpaces").map { unsafeBitCast($0, to: CopyDisplays.self) }
-    static func spaces(_ id: UInt32) -> Set<UInt64>? {
-        guard connection != 0, let array = copySpaces?(connection, 7, [NSNumber(value: id)] as CFArray)?.takeRetainedValue() as? [NSNumber] else { return nil }
-        return Set(array.map(\.uint64Value))
+        // Penceresiz uygulamalar: yalnızca yanıt verip hiç kullanıcı penceresi
+        // tanımlamayan uygulamalar. Meşgul bir uygulamaya "penceresi yok" denmez.
+        let hasWindow = Set(windows.map(\.pid))
+        for app in eligible where app.pid != ownPID && !hasWindow.contains(app.pid) && !withheld.contains(app.pid) {
+            let wanted = preferences.windowless == .all
+                || (preferences.windowless == .finder && app.bundleID == "com.apple.finder")
+            if accessibility {
+                guard wanted, !preferences.currentScreenOnly,
+                      let report = reports[app.pid], report.answered, report.timedOut.isEmpty,
+                      !report.windows.contains(where: \.userFacing) else { continue }
+            }
+            windows.append(SwitcherWindow(id: "app:\(app.pid)", pid: app.pid, bundleID: app.bundleID, appName: app.name,
+                                          title: app.name, icon: app.icon, element: nil, windowID: nil,
+                                          minimized: app.hidden, fullscreen: false, frame: nil, order: 20_000))
+        }
+        return windows
     }
-    static func visible() -> Set<UInt64> {
-        guard connection != 0, let displays = copyDisplays?(connection)?.takeRetainedValue() as? [[String: Any]] else { return [] }
-        return Set(displays.compactMap { (($0["Current Space"] as? [String: Any])?["id64"] as? NSNumber)?.uint64Value })
+
+    /// Uygulamaları paralel okur. Her uygulamanın kendi kısa zaman aşımı ve
+    /// hepsinin ortak bir son tarihi vardır.
+    private static func readAccessibility(_ apps: [SwitcherAppSnapshot], normalLevel: Set<CGWindowID>,
+                                          cancelled: @escaping () -> Bool) -> [pid_t: AXReport] {
+        let deadline = ProcessInfo.processInfo.systemUptime + 0.45
+        let lock = NSLock()
+        var reports: [pid_t: AXReport] = [:]
+        DispatchQueue.concurrentPerform(iterations: apps.count) { index in
+            let app = apps[index]
+            guard !cancelled() else { return }
+            let report = readApp(app, normalLevel: normalLevel, deadline: deadline, cancelled: cancelled)
+            lock.lock(); reports[app.pid] = report; lock.unlock()
+        }
+        return reports
+    }
+
+    private static func readApp(_ app: SwitcherAppSnapshot, normalLevel: Set<CGWindowID>,
+                                deadline: TimeInterval, cancelled: () -> Bool) -> AXReport {
+        var report = AXReport()
+        func remaining() -> Float { Float(max(0, deadline - ProcessInfo.processInfo.systemUptime)) }
+        guard remaining() > 0.01 else { return report }
+        let ax = AXUIElementCreateApplication(app.pid)
+        AXUIElementSetMessagingTimeout(ax, min(0.15, remaining()))
+        var value: CFTypeRef?
+        let status = AXUIElementCopyAttributeValue(ax, kAXWindowsAttribute as CFString, &value)
+        switch status {
+        case .success:
+            report.answered = true
+        case .noValue, .attributeUnsupported:
+            report.answered = true
+            return report
+        default:
+            return report
+        }
+        let elements = (value as? [AXUIElement]) ?? []
+        let attributes = [kAXRoleAttribute, kAXSubroleAttribute, kAXTitleAttribute, kAXMinimizedAttribute,
+                          "AXFullScreen", kAXPositionAttribute, kAXSizeAttribute] as CFArray
+        for element in elements.prefix(80) {
+            if cancelled() { return report }
+            let time = remaining()
+            let id = windowID(element)
+            guard time > 0.005 else {
+                if let id { report.timedOut.insert(id) }
+                continue
+            }
+            AXUIElementSetMessagingTimeout(element, min(0.06, time))
+            var batch: CFArray?
+            let read = AXUIElementCopyMultipleAttributeValues(element, attributes, AXCopyMultipleAttributeOptions(rawValue: 0), &batch)
+            guard read == .success, let values = batch as? [AnyObject], values.count == 7 else {
+                if let id { report.timedOut.insert(id) }
+                continue
+            }
+            func text(_ index: Int) -> String? { values[index] as? String }
+            func flag(_ index: Int) -> Bool { (values[index] as? NSNumber)?.boolValue ?? false }
+            var frame: CGRect?
+            let position = values[5], size = values[6]
+            if CFGetTypeID(position) == AXValueGetTypeID(), CFGetTypeID(size) == AXValueGetTypeID() {
+                var point = CGPoint.zero, extent = CGSize.zero
+                if AXValueGetValue(unsafeBitCast(position, to: AXValue.self), .cgPoint, &point),
+                   AXValueGetValue(unsafeBitCast(size, to: AXValue.self), .cgSize, &extent) {
+                    frame = CGRect(origin: point, size: extent)
+                }
+            }
+            let title = text(2) ?? ""
+            let minimized = flag(3), fullscreen = flag(4)
+            let userFacing = isUserFacing(element: element, role: text(0), subrole: text(1), minimized: minimized,
+                                          fullscreen: fullscreen, frame: frame, windowID: id,
+                                          title: title, normalLevel: normalLevel)
+            report.windows.append(AXReading(element: element, windowID: id, title: title, minimized: minimized,
+                                            fullscreen: fullscreen, frame: frame, userFacing: userFacing))
+        }
+        return report
+    }
+
+    /// Kullanıcının geçiş yapacağı gerçek pencere mi? Standart ve tam ekran
+    /// pencereler evet, küçültülmüş pencereler evet. Diyaloglar yalnızca normal
+    /// düzeyde ve çalışan bir küçültme düğmesi varsa (gizli uygulamanın
+    /// pencereleri diyalog görünür). Tanımsız yüzeyler yalnızca normal düzeyde,
+    /// döngüden çıkarılmamış, başlıklı ve yeterince büyükse.
+    private static func isUserFacing(element: AXUIElement, role: String?, subrole: String?, minimized: Bool,
+                                     fullscreen: Bool, frame: CGRect?, windowID: CGWindowID?, title: String,
+                                     normalLevel: Set<CGWindowID>) -> Bool {
+        if fullscreen { return true }
+        if minimized && role == kAXWindowRole as String { return true }
+        guard let subrole else { return role == kAXWindowRole as String }
+        switch subrole {
+        case kAXStandardWindowSubrole, "AXFullScreenWindow":
+            return true
+        case kAXDialogSubrole:
+            guard let windowID, normalLevel.contains(windowID),
+                  let raw = value(element, kAXMinimizeButtonAttribute),
+                  CFGetTypeID(raw) == AXUIElementGetTypeID() else { return false }
+            return value(unsafeBitCast(raw, to: AXUIElement.self), kAXEnabledAttribute) as? Bool ?? false
+        case "AXUnknown":
+            guard let windowID, normalLevel.contains(windowID), !title.isEmpty,
+                  let frame, frame.width >= 200, frame.height >= 150 else { return false }
+            return !SwitcherWindowServer.isExcludedFromCycle(windowID)
+        default:
+            return false
+        }
     }
 }
 

@@ -516,10 +516,18 @@ struct DownloaderSettingsForm: View {
     private var trimmedLink: String { link.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
-        Form {
-            Section {
+        VStack(alignment: .leading, spacing: 20) {
+            SettingsCard(
+                title: L("İndir", "Download"),
+                footer: store.settings.downloadFormat == .mp3
+                    ? L("Bağlantıdaki sesi en yüksek kalitede MP3 olarak kaydeder.",
+                        "Saves the link’s audio as a high quality MP3.")
+                    : L("Bağlantıdaki videoyu en iyi kalitede MP4 olarak kaydeder.",
+                        "Saves the link’s video in the best quality as MP4.")
+            ) {
                 HStack(spacing: 6) {
                     TextField(L("Bağlantı", "Link"), text: $link, prompt: Text("https://…"))
+                        .textFieldStyle(.roundedBorder)
                         .onSubmit(start)
                     Button {
                         link = NSPasteboard.general.string(forType: .string) ?? ""
@@ -529,12 +537,11 @@ struct DownloaderSettingsForm: View {
                     .buttonStyle(.borderless)
                     .help(L("Panodan yapıştır", "Paste from clipboard"))
                 }
-                Picker(L("Biçim", "Format"), selection: $store.settings.downloadFormat) {
+                SettingsSegmentRow(symbol: "film", title: L("Biçim", "Format"), selection: $store.settings.downloadFormat) {
                     ForEach(DownloadService.Format.allCases) { format in
                         Text(format == .mp3 ? L("Ses (MP3)", "Audio (MP3)") : L("Video (MP4)", "Video (MP4)")).tag(format)
                     }
                 }
-                .pickerStyle(.segmented)
                 status
                 HStack {
                     Spacer()
@@ -547,91 +554,71 @@ struct DownloaderSettingsForm: View {
                             .disabled(trimmedLink.isEmpty || (toolsChecked && !tools.ready))
                     }
                 }
-            } header: {
-                Text(L("İndir", "Download"))
-            } footer: {
-                Text(store.settings.downloadFormat == .mp3
-                     ? L("Bağlantıdaki sesi en yüksek kalitede MP3 olarak kaydeder.",
-                         "Saves the link’s audio as a high quality MP3.")
-                     : L("Bağlantıdaki videoyu en iyi kalitede MP4 olarak kaydeder.",
-                         "Saves the link’s video in the best quality as MP4."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
-            Section(L("Kaydetme konumu", "Save location")) {
-                LabeledContent(L("Klasör", "Folder")) {
+            SettingsCard(title: L("Kaydetme konumu", "Save location")) {
+                SettingsRow(symbol: "folder", title: L("Klasör", "Folder"),
+                            caption: store.settings.downloadDestination.path) {
                     HStack(spacing: 8) {
-                        Text(store.settings.downloadDestination.path)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
                         Button(L("Değiştir…", "Change…"), action: chooseFolder)
+                        Button(L("Finder’da aç", "Open in Finder")) {
+                            NSWorkspace.shared.open(store.settings.downloadDestination)
+                        }
                     }
                 }
-                Button(L("Klasörü Finder’da aç", "Open folder in Finder")) {
-                    NSWorkspace.shared.open(store.settings.downloadDestination)
-                }
             }
 
-            Section {
+            SettingsCard(
+                title: L("Araçlar", "Tools"),
+                footer: L("İndirme yt-dlp ve ffmpeg ile yapılır. Homebrew ile kurabilirsin.",
+                          "Downloads use yt-dlp and ffmpeg. You can install them with Homebrew.")
+            ) {
                 if toolsChecked {
                     toolRow("yt-dlp", path: tools.ytdlp)
+                    Divider()
                     toolRow("ffmpeg", path: tools.ffmpeg)
                 } else {
                     ProgressView().controlSize(.small)
                 }
-                Toggle(L("yt-dlp’yi kendiliğinden güncelle", "Update yt-dlp automatically"),
-                       isOn: $store.settings.downloaderAutoUpdate)
-                Button(L("yt-dlp’yi şimdi güncelle", "Update yt-dlp now")) {
-                    Task { await DownloadService.shared.updateTool() }
-                }
-                if let note = service.lastUpdateNote {
-                    Text(note).font(.caption).foregroundStyle(.tertiary)
+                Divider()
+                SettingsRow(symbol: "arrow.triangle.2.circlepath",
+                            title: L("yt-dlp’yi kendiliğinden güncelle", "Update yt-dlp automatically"),
+                            caption: service.lastUpdateNote) {
+                    HStack(spacing: 8) {
+                        Button(L("Şimdi güncelle", "Update now")) {
+                            Task { await DownloadService.shared.updateTool() }
+                        }
+                        Toggle(L("yt-dlp’yi kendiliğinden güncelle", "Update yt-dlp automatically"),
+                               isOn: $store.settings.downloaderAutoUpdate)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                    }
                 }
                 if toolsChecked, !tools.ready {
-                    LabeledContent(L("Kurulum", "Install")) {
-                        HStack(spacing: 8) {
-                            Text(installCommand)
-                                .font(.system(.body, design: .monospaced))
-                                .textSelection(.enabled)
-                            Button {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(installCommand, forType: .string)
-                            } label: {
-                                Image(systemName: "doc.on.doc")
-                            }
-                            .buttonStyle(.borderless)
-                            .help(L("Kopyala", "Copy"))
+                    Divider()
+                    SettingsRow(symbol: "terminal", title: L("Kurulum", "Install"), caption: installCommand) {
+                        Button {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(installCommand, forType: .string)
+                        } label: {
+                            Label(L("Kopyala", "Copy"), systemImage: "doc.on.doc")
                         }
                     }
                 }
-            } header: {
-                Text(L("Araçlar", "Tools"))
-            } footer: {
-                Text(L("İndirme yt-dlp ve ffmpeg ile yapılır. Homebrew ile kurabilirsin.",
-                       "Downloads use yt-dlp and ffmpeg. You can install them with Homebrew."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
-        .formStyle(.grouped)
         .onAppear(perform: refreshTools)
     }
 
     private var installCommand: String { "brew install " + tools.missing.joined(separator: " ") }
 
     private func toolRow(_ name: String, path: String?) -> some View {
-        LabeledContent(name) {
-            if let path {
-                Label(path, systemImage: "checkmark.circle.fill")
-                    .labelStyle(.titleAndIcon)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+        SettingsRow(symbol: path == nil ? "xmark.circle" : "checkmark.circle", title: name,
+                    caption: path ?? L("Bulunamadı", "Not found")) {
+            if path == nil {
+                Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
             } else {
-                Label(L("Bulunamadı", "Not found"), systemImage: "xmark.circle.fill")
-                    .foregroundStyle(.red)
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
             }
         }
     }
