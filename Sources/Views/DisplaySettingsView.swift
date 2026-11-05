@@ -6,8 +6,7 @@ struct DisplaySettingsView: View {
     @ObservedObject private var controller = DisplayController.shared
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 18) {
                 SettingsCard {
                     SettingsToggleRow(title: L("Ekran parlaklığı kontrolü", "Display brightness control"), detail: L("Her ekranı ayrı ayarla. Değişiklikler uygulama kapanınca veya Mac uyuyunca geri alınır.", "Adjust each display separately. Changes are restored when Hâl quits or your Mac sleeps."), symbol: "sun.max", isOn: $store.settings.displayControlsEnabled)
                 }
@@ -58,7 +57,6 @@ struct DisplaySettingsView: View {
                         }
                     }
                 }
-            }.padding(24)
         }
         .onAppear { controller.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in controller.refresh() }

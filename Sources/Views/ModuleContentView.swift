@@ -16,7 +16,6 @@ struct DetailPopoverView: View {
     var hostPages: [HostPage] = []
     var onSettings: (SettingsTab) -> Void
     var onNavigate: (String) -> Void = { _ in }
-    @State private var loginHint: String?
     @State private var pageID = ""
 
     var body: some View {
@@ -61,11 +60,7 @@ struct DetailPopoverView: View {
         case .focus:
             FocusModuleView()
         case .usage:
-            if let item = page.item, let group = store.quotas.first(where: { $0.id == item }) {
-                quotaBody(group)
-            } else {
-                Text(L("Kota yok", "No quotas")).font(.system(size: 12)).foregroundStyle(.secondary)
-            }
+            QuotaOverviewView(onSettings: onSettings)
         case .prayer:
             prayerBody
         case .calendar:
@@ -79,180 +74,6 @@ struct DetailPopoverView: View {
             }
         case .money:
             moneyBody
-        }
-    }
-
-    @ViewBuilder
-    private func quotaBody(_ group: QuotaGroup) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            switch group.status {
-            case .ready:
-                ForEach(group.windows) { window in
-                    meter(window)
-                }
-            case .loading:
-                ProgressView().controlSize(.small)
-            case .missingAuth, .error:
-                quotaSetup(group)
-            }
-        }
-    }
-
-    private func quotaSetup(_ group: QuotaGroup) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(setupTitle(group))
-                .font(.system(size: 13, weight: .semibold))
-            Text(setupDetail(group))
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 8) {
-                ForEach(setupActions(group), id: \.title) { action in
-                    Button(action.title, action: action.run)
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                }
-            }
-        }
-        .padding(.top, 4)
-    }
-
-    private var isMissingAuth: (QuotaGroup) -> Bool {
-        { $0.status == .missingAuth }
-    }
-
-    private func setupTitle(_ group: QuotaGroup) -> String {
-        // Oturum yokluğu ile okuma hatası ayrı şeyler; ikisini aynı başlıkla göstermiyoruz.
-        if isMissingAuth(group) {
-            switch group.kind {
-            case .claude: return L("Claude oturumu yok", "No Claude session")
-            case .codex: return L("Codex oturumu yok", "No Codex session")
-            case .grok: return L("Grok henüz bağlı değil", "Grok is not connected yet")
-            case .custom: return Lf("%1$@ için kaynak yok", "No source for %1$@", group.name)
-            }
-        }
-        let message = group.message ?? ""
-        if message.localizedCaseInsensitiveContains("süresi dolmuş")
-            || message.localizedCaseInsensitiveContains("expired") {
-            return Lf("%1$@ oturumu süresi dolmuş", "%1$@ session expired", group.name)
-        }
-        return Lf("%1$@ kotası okunamadı", "Could not read %1$@ quota", group.name)
-    }
-
-    private func setupDetail(_ group: QuotaGroup) -> String {
-        // Hata durumunda tahmin yürütmek yerine sunucudan/komuttan gelen gerçek nedeni göster.
-        if !isMissingAuth(group), let message = group.message, !message.isEmpty {
-            return message + "\n\n" + setupHint(group)
-        }
-        return setupHint(group)
-    }
-
-    private func setupHint(_ group: QuotaGroup) -> String {
-        switch group.kind {
-        case .claude:
-            return L(
-                "Kota api.anthropic.com/api/oauth/usage adresinden okunur; oturum Keychain’deki “Claude Code-credentials” kaydından gelir. Terminalde claude /login çalıştır, sonra Yenile’ye bas.",
-                "Quota is read from api.anthropic.com/api/oauth/usage; the session comes from the Keychain “Claude Code-credentials” entry. Run claude /login in Terminal, then tap Refresh."
-            )
-        case .grok:
-            return L(
-                "Haftalık sınır grok’un kendi fatura ucundan okunur. Oturum ~/.grok/auth.json dosyasıdır. Terminalde grok login çalıştır, sonra Yenile.",
-                "The weekly limit is read from grok’s own billing endpoint. The session is ~/.grok/auth.json. Run grok login in Terminal, then Refresh."
-            )
-        case .codex:
-            return L(
-                "Kota chatgpt.com/backend-api/wham/usage adresinden okunur; oturum ~/.codex/auth.json dosyasından gelir. Terminalde codex login çalıştır, sonra Yenile’ye bas.",
-                "Quota is read from chatgpt.com/backend-api/wham/usage; the session comes from ~/.codex/auth.json. Run codex login in Terminal, then tap Refresh."
-            )
-        case .custom:
-            return L(
-                "Bu kaynağın JSON çıktısında kota alanı bulunamadı. Ayarlar’dan komutu veya URL’yi kontrol et.",
-                "No quota field found in this source’s JSON output. Check the command or URL in Settings."
-            )
-        }
-    }
-
-    private struct SetupAction {
-        var title: String
-        var run: () -> Void
-    }
-
-    private func setupActions(_ group: QuotaGroup) -> [SetupAction] {
-        var actions: [SetupAction] = []
-        let openedHint = L("Terminal açıldı. Giriş bittikten sonra Yenile’ye bas.",
-                           "Terminal opened. After you finish signing in, tap Refresh.")
-        switch group.kind {
-        case .claude:
-            actions.append(SetupAction(title: L("Terminalde giriş", "Sign in via Terminal")) {
-                if let error = ClaudeAuth.openLogin() {
-                    loginHint = error
-                } else {
-                    loginHint = openedHint
-                }
-            })
-        case .grok:
-            actions.append(SetupAction(title: L("Terminalde giriş", "Sign in via Terminal")) {
-                if let error = GrokAuth.openLogin() {
-                    loginHint = error
-                } else {
-                    loginHint = openedHint
-                }
-            })
-        case .codex, .custom:
-            break
-        }
-        actions.append(SetupAction(title: L("Yenile", "Refresh")) {
-            loginHint = nil
-            Task { await store.refresh() }
-        })
-        if group.kind != .grok {
-            actions.append(SetupAction(title: L("Ayarlar", "Settings")) { onSettings(.quota) })
-        }
-        return actions
-    }
-
-    private func meter(_ window: QuotaWindow) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(window.title)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if !window.resetText.isEmpty {
-                    Text(window.resetText)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            if window.hasLimit {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.primary.opacity(0.08))
-                        Capsule()
-                            .fill(Theme.barColor(percent: window.clampedPercent))
-                            .frame(width: max(6, geo.size.width * window.clampedPercent))
-                    }
-                }
-                .frame(height: 6)
-                Text(Lf("%1$@ kullanıldı", "%1$@ used", window.percentText))
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                if !window.usedText.isEmpty {
-                    Text(window.usedText)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                }
-            } else {
-                // Sağlayıcının bir kota tavanı yok: yüzde uydurmak yerine ham değeri göster.
-                Text(window.usedText.isEmpty ? L("Kota sınırı yok", "No quota limit") : window.usedText)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-            }
-            if let detail = window.detail, !detail.isEmpty {
-                Text(detail)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-            }
         }
     }
 

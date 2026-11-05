@@ -190,10 +190,12 @@ struct AppSettings: Codable, Equatable, Sendable {
     var disabledModules: [String] = []
     /// Panodaki selamlamada kullanılır; boşsa yalnızca selam yazılır.
     var displayName: String = ""
-    /// Temizlik kalkanındaki büyük başlık; boşsa “Temizlik modu”.
+    /// Temizlik ekranındaki büyük başlık; boşsa varsayılan kilit başlığı.
     var cleaningTitle: String = ""
-    /// Temizlik kalkanındaki açıklama; boşsa varsayılan kilit metni.
+    /// Temizlik ekranında duracak not; boşsa gösterilmez.
     var cleaningHint: String = ""
+    /// Temizlikte ekranı karartmak yerine köşede küçük bir gösterge.
+    var cleaningKeepScreenVisible: Bool = false
     var focusTracking: Bool = true
     /// Bugünkü derin çalışma hedefi. Sıfır hedefi kapatır, ölçümü değil.
     var focusGoalMinutes: Int = 240
@@ -261,28 +263,10 @@ struct AppSettings: Codable, Equatable, Sendable {
     }
 
     static var defaultCleaningTitle: String { L("Temizlik modu", "Cleaning mode") }
-    static var defaultCleaningHint: String {
-        L(
-            "Klavye ve trackpad tıklamaları kilitli.\nKapatmak için düğmeye veya Hâl ikonuna tıklayın.",
-            "Keyboard and trackpad clicks are locked.\nClick the button or the Hâl icon to stop."
-        )
-    }
-    static var defaultCleaningButtonTitle: String { L("Temizlik modunu kapat", "Stop cleaning mode") }
 
     var resolvedCleaningTitle: String {
         let trimmed = cleaningTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? Self.defaultCleaningTitle : trimmed
-    }
-
-    var resolvedCleaningHint: String {
-        let trimmed = cleaningHint.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? Self.defaultCleaningHint : trimmed
-    }
-
-    var resolvedCleaningButtonTitle: String {
-        cleaningTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? Self.defaultCleaningButtonTitle
-            : L("Kapat", "Stop")
     }
 
     var resolvedCleaningMenuTitle: String {
@@ -299,7 +283,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         case menuBarVisible, menuBarHidden, mirrorToOtherDisplays, menuBarCollapsed, menuBarClickOpens
         case notifyPrayer, notifyPrayerMinutes
         case notifyQuotaReset, notifyQuotaThreshold, notifyQuotaThresholdPercent
-        case disabledModules, displayName, cleaningTitle, cleaningHint
+        case disabledModules, displayName, cleaningTitle, cleaningHint, cleaningKeepScreenVisible
         case focusTracking, focusGoalMinutes, focusApps, trackPrayers
         case waterGoalML, proteinGoalG, trackIntake, notifyDailySummary, dailySummaryHour
         case notifyDayClose, dayCloseHour
@@ -358,6 +342,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         displayName = try c.decodeIfPresent(String.self, forKey: .displayName) ?? ""
         cleaningTitle = try c.decodeIfPresent(String.self, forKey: .cleaningTitle) ?? ""
         cleaningHint = try c.decodeIfPresent(String.self, forKey: .cleaningHint) ?? ""
+        cleaningKeepScreenVisible = try c.decodeIfPresent(Bool.self, forKey: .cleaningKeepScreenVisible) ?? false
         focusTracking = try c.decodeIfPresent(Bool.self, forKey: .focusTracking) ?? true
         focusGoalMinutes = try c.decodeIfPresent(Int.self, forKey: .focusGoalMinutes) ?? 240
         focusApps = try c.decodeIfPresent([String].self, forKey: .focusApps) ?? FocusTracker.defaultApps
@@ -432,6 +417,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(displayName, forKey: .displayName)
         try c.encode(cleaningTitle, forKey: .cleaningTitle)
         try c.encode(cleaningHint, forKey: .cleaningHint)
+        try c.encode(cleaningKeepScreenVisible, forKey: .cleaningKeepScreenVisible)
         try c.encode(focusTracking, forKey: .focusTracking)
         try c.encode(focusGoalMinutes, forKey: .focusGoalMinutes)
         try c.encode(focusApps, forKey: .focusApps)
@@ -494,6 +480,8 @@ struct QuotaWindow: Identifiable, Equatable, Sendable {
     var hasLimit: Bool = true
     /// Pencerenin sıfırlanacağı an. Bildirimler ve "sıfırlandı" tespiti bunu kullanır.
     var resetsAt: Date?
+    /// Pencerenin uzunluğu (dakika). Bilinirse çubukta zamanın ne kadarının geçtiği işaretlenir.
+    var windowMinutes: Int?
 
     init(
         id: String,
@@ -503,7 +491,8 @@ struct QuotaWindow: Identifiable, Equatable, Sendable {
         resetText: String,
         detail: String? = nil,
         hasLimit: Bool = true,
-        resetsAt: Date? = nil
+        resetsAt: Date? = nil,
+        windowMinutes: Int? = nil
     ) {
         self.id = id
         self.title = title
@@ -513,15 +502,50 @@ struct QuotaWindow: Identifiable, Equatable, Sendable {
         self.detail = detail
         self.hasLimit = hasLimit
         self.resetsAt = resetsAt
+        self.windowMinutes = windowMinutes
     }
 
     var clampedPercent: Double {
         min(max(percent, 0), 1)
     }
 
+    /// Okumadan sonra yenilenmiş bir pencerede henüz harcanan bir şey yoktur.
+    func current(at now: Date) -> QuotaWindow {
+        guard hasLimit, let resetsAt, resetsAt <= now else { return self }
+        var copy = self
+        copy.percent = 0
+        copy.resetsAt = nil
+        return copy
+    }
+
+    /// Pencere süresinin ne kadarının geçtiği (0…1). Yenilenme anı ve uzunluk bilinmeden nil.
+    func elapsedFraction(at now: Date) -> Double? {
+        guard let windowMinutes, windowMinutes > 0, let resetsAt, resetsAt > now else { return nil }
+        let length = TimeInterval(windowMinutes) * 60
+        let elapsed = now.timeIntervalSince(resetsAt.addingTimeInterval(-length))
+        guard elapsed > 0 else { return nil }
+        return min(1, elapsed / length)
+    }
+
     var percentText: String {
         "\(Int((clampedPercent * 100).rounded()))%"
     }
+}
+
+/// Codex'in hesapta biriktirdiği sıfırlama hakları. Biri, oturum ve haftalık
+/// limiti birlikte yeniler; kullanılana ya da süresi dolana kadar hesapta kalır.
+struct QuotaResetCredits: Equatable, Sendable {
+    struct Credit: Equatable, Sendable, Identifiable {
+        var id: String
+        var title: String?
+        var expiresAt: Date?
+    }
+
+    var available: Int
+    /// Süresi en yakın dolan önce. Hesap sayıdan azını listeleyebilir.
+    var credits: [Credit]
+
+    var nextExpiry: Date? { credits.lazy.compactMap(\.expiresAt).min() }
 }
 
 enum QuotaStatus: Equatable, Sendable {
@@ -541,6 +565,14 @@ struct QuotaGroup: Identifiable, Equatable, Sendable {
     var windows: [QuotaWindow]
     /// Kota yüzdesi olmayan bir sağlayıcı için menü çubuğunda gösterilecek metin.
     var menuBarOverride: String?
+    /// Hesabın planı (Pro, Plus, Max…), CLI söylüyorsa.
+    var plan: String?
+    /// Okumanın yapıldığı an. Eski bir okuma kartta soluk ve tarihli gösterilir.
+    var observedAt: Date?
+    /// Okumanın kaynağına dair kısa not (ör. Claude uygulamasının kaydı).
+    var note: String?
+    /// Codex hesabında biriken sıfırlama hakları.
+    var resetCredits: QuotaResetCredits?
 
     init(
         id: String,
@@ -550,7 +582,11 @@ struct QuotaGroup: Identifiable, Equatable, Sendable {
         status: QuotaStatus,
         message: String?,
         windows: [QuotaWindow],
-        menuBarOverride: String? = nil
+        menuBarOverride: String? = nil,
+        plan: String? = nil,
+        observedAt: Date? = nil,
+        note: String? = nil,
+        resetCredits: QuotaResetCredits? = nil
     ) {
         self.id = id
         self.name = name
@@ -560,6 +596,10 @@ struct QuotaGroup: Identifiable, Equatable, Sendable {
         self.message = message
         self.windows = windows
         self.menuBarOverride = menuBarOverride
+        self.plan = plan
+        self.observedAt = observedAt
+        self.note = note
+        self.resetCredits = resetCredits
     }
 
     var symbol: String { kind.symbol }

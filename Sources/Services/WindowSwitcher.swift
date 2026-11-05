@@ -24,8 +24,9 @@ final class WindowSwitcher: ObservableObject {
     private var sourcePID: pid_t?
     private var scopePID: pid_t?
     private var activeKey: SwitcherKey?
-    private var selectedWindowHistory: [String] = []
-    private var appHistory: [pid_t] = []
+    /// Oturum açıldığında öndeki pencere; geçişte ikinci sıraya alınır ki
+    /// kısayola tekrar basmak geri döndürsün.
+    private var sourceWindowID: CGWindowID?
     private var generation = 0
     private var stepsWhileLoading = 0
     private var pendingCommit = false
@@ -33,7 +34,6 @@ final class WindowSwitcher: ObservableObject {
     private var panel: NSPanel?
     private var localKeys: Any?
     private var outsideClicks: Any?
-    private var activationObserver: Any?
     private var hotKeys: [EventHotKeyRef] = []
     private var hotKeyHandler: EventHandlerRef?
     private var recording = false
@@ -57,14 +57,6 @@ final class WindowSwitcher: ObservableObject {
             if available { self.shortcutError = nil }
             self.registerFallback(enabled: !available)
             self.nativeKeys.sync(self.preferences, recording: self.recording, live: available)
-        }
-        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] notification in
-            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
-            Task { @MainActor in
-                guard let self, app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
-                self.appHistory.removeAll { $0 == app.processIdentifier }; self.appHistory.insert(app.processIdentifier, at: 0)
-                if self.appHistory.count > 80 { self.appHistory.removeLast() }
-            }
         }
     }
     var filtered: [SwitcherWindow] {
@@ -93,7 +85,8 @@ final class WindowSwitcher: ObservableObject {
         preferences = settings
         shortcutError = nil
         refreshPermissions()
-        if !settings.enabled { hide(); thumbnails.clear() }
+        if !settings.enabled { hide(); thumbnails.clear(); SwitcherHistory.shared.stop() }
+        else { SwitcherHistory.shared.start() }
         updateInput()
         secureInputTimer?.invalidate(); secureInputTimer = nil
         if settings.enabled {
@@ -178,7 +171,11 @@ final class WindowSwitcher: ObservableObject {
     }
     func openOrAdvance() { begin(.apps, key: nil, reversed: false, pinned: true) }
     func begin(_ requestedScope: SwitcherScope, key: SwitcherKey?, reversed: Bool, pinned: Bool) {
-        guard preferences.enabled, !recording else { return }
+        guard preferences.enabled, !recording else {
+            // Olay yakalayıcı oturumu çoktan açık saydı; açık kalırsa her tuşu yutar.
+            updateRouting()
+            return
+        }
         if sessionActive && pendingCommit { hide() }
         if sessionActive {
             if requestedScope == .currentApp && scope != .currentApp {
@@ -192,7 +189,7 @@ final class WindowSwitcher: ObservableObject {
         sourcePID = NSWorkspace.shared.frontmostApplication?.processIdentifier
         scopePID = sourcePID; scope = requestedScope; query = ""; selectedID = nil
         stepsWhileLoading = reversed ? -1 : 1; pendingCommit = false; loading = true
-        sessionWindows = []; windows = []; hoveredID = nil; hoverAnchor = NSEvent.mouseLocation
+        sessionWindows = []; windows = []; hoveredID = nil; hoverAnchor = NSEvent.mouseLocation; sourceWindowID = nil
         placementFrame = screenForSession().visibleFrame
         updateRouting()
         if let key, !pinned, !SwitcherInput.shared.isLive {
@@ -231,16 +228,22 @@ final class WindowSwitcher: ObservableObject {
     private func complete(_ rows: [SwitcherWindow], ticket: Int) {
         guard ticket == generation, sessionActive else { return }
         loading = false
-        let recent = Dictionary(uniqueKeysWithValues: selectedWindowHistory.enumerated().map { ($0.element, $0.offset) })
-        let appRecent = Dictionary(uniqueKeysWithValues: appHistory.enumerated().map { ($0.element, $0.offset) })
-        let sourceID = rows.filter { $0.pid == sourcePID }.min(by: { $0.order < $1.order })?.id
+        // Sıra: kullanıcının gerçekten kullandığı pencereler en son kullanılan
+        // önce; hiç odak almamışlar uygulamanın son kullanımına, sonra
+        // pencere sunucusunun önden arkaya sırasına göre. Öndeki pencere başta
+        // durur, böylece ilk adım bir önceki pencereye gider.
+        let windowRank = SwitcherHistory.shared.windowRanks()
+        let appRank = SwitcherHistory.shared.appRanks()
+        func rank(_ row: SwitcherWindow) -> (Int, Int, Int) {
+            if let id = row.windowID, let known = windowRank[id] { return (0, known, 0) }
+            return (row.windowID == nil ? 2 : 1, appRank[row.pid] ?? Int.max / 2, row.order)
+        }
+        let source = rows.filter { $0.pid == sourcePID && !$0.minimized }.min { rank($0) < rank($1) }
+        sourceWindowID = source?.windowID
         sessionWindows = rows.sorted { a, b in
-            if a.id == sourceID { return b.id != sourceID }
-            if b.id == sourceID { return false }
-            let left = recent[a.id] ?? 1000, right = recent[b.id] ?? 1000
-            if left != right { return left < right }
-            if a.order != b.order { return a.order < b.order }
-            return (appRecent[a.pid] ?? 1000) < (appRecent[b.pid] ?? 1000)
+            if a.id == source?.id { return b.id != source?.id }
+            if b.id == source?.id { return false }
+            return rank(a) < rank(b)
         }
         windows = sessionWindows
         let visible = filtered
@@ -397,25 +400,17 @@ final class WindowSwitcher: ObservableObject {
     }
     func activateSelected() { if let selected { activate(selected) } else { hide() } }
     func activate(_ row: SwitcherWindow) {
-        selectedWindowHistory.removeAll { $0 == row.id }; selectedWindowHistory.insert(row.id, at: 0)
-        if selectedWindowHistory.count > 100 { selectedWindowHistory.removeLast() }
+        // Geçmiş hemen güncellenir: hızlı bir ikinci basış, pencere sunucusu
+        // ve AX bu geçişi bildirmeden önce gelebilir.
+        SwitcherHistory.shared.noteSwitch(to: row.windowID, pid: row.pid, from: sourceWindowID)
+        let source = sourcePID
         hide()
-        guard let app = NSRunningApplication(processIdentifier: row.pid) else { return }
-        app.unhide()
-        if let element = row.element {
-            AXUIElementSetAttributeValue(element, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
-            AXUIElementSetAttributeValue(element, kAXMainAttribute as CFString, kCFBooleanTrue)
-            let appAX = AXUIElementCreateApplication(row.pid)
-            AXUIElementSetAttributeValue(appAX, kAXFocusedWindowAttribute as CFString, element)
-            AXUIElementPerformAction(element, kAXRaiseAction as CFString)
-        }
-        if !app.activate(from: .current, options: []) { app.activate(options: []) }
-        if let element = row.element {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { AXUIElementPerformAction(element, kAXRaiseAction as CFString) }
-        }
+        SwitcherActivator.activate(row, sourcePID: source)
     }
     func closeWindow(_ id: String) {
-        guard let row = sessionWindows.first(where: { $0.id == id }), let element = row.element,
+        // Başka Space'teki pencerenin AX öğesi listede yoktur; kimliğiyle aranır.
+        guard let row = sessionWindows.first(where: { $0.id == id }),
+              let element = row.element ?? row.windowID.flatMap({ SwitcherWindowServer.element(for: $0, pid: row.pid) }),
               let raw = SwitcherWindowQuery.value(element, kAXCloseButtonAttribute), CFGetTypeID(raw) == AXUIElementGetTypeID() else { return }
         let button = unsafeBitCast(raw, to: AXUIElement.self)
         guard AXUIElementPerformAction(button, kAXPressAction as CFString) == .success else { return }
@@ -442,7 +437,7 @@ final class WindowSwitcher: ObservableObject {
     func requestAccessibility() { _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary) }
     func requestCapture() { captureGranted = CGRequestScreenCaptureAccess() }
     func shutdown() {
-        hide(); unregisterHotKeys(); nativeKeys.restore(); SwitcherInput.shared.stop(); thumbnails.clear()
+        hide(); unregisterHotKeys(); nativeKeys.restore(); SwitcherInput.shared.stop(); thumbnails.clear(); SwitcherHistory.shared.stop()
         secureInputTimer?.invalidate(); secureInputTimer = nil
         if let hotKeyHandler { RemoveEventHandler(hotKeyHandler); self.hotKeyHandler = nil }
         if let localKeys { NSEvent.removeMonitor(localKeys); self.localKeys = nil }

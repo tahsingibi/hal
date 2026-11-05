@@ -1,6 +1,5 @@
 import AppKit
 import Foundation
-import Security
 
 /// Yarışan iki görevden ilk sonucu tek seferlik iletir.
 private final class QuotaRelay: @unchecked Sendable {
@@ -39,7 +38,7 @@ private final class QuotaRelay: @unchecked Sendable {
 struct UsageService {
     /// Tek bir sağlayıcının okunması bu süreyi aşarsa hata olarak işaretlenir.
     /// Böylece takılan bir kaynak diğer kotaların güncellenmesini engellemez.
-    private static let providerTimeout: TimeInterval = 25
+    private static let providerTimeout: TimeInterval = 30
 
     static func loadGroups(settings: AppSettings) async -> [QuotaGroup] {
         await withTaskGroup(of: QuotaGroup?.self) { group in
@@ -130,70 +129,60 @@ struct UsageService {
         )
     }
 
+    /// Kota Claude Code'a sorulur (`claude` kontrol protokolü, `get_usage`). Oturumu
+    /// Claude Code kendisi açar ve yeniler; Hâl anahtar zincirine hiç dokunmaz.
+    /// Claude Code yanıt veremezse Claude masaüstü uygulamasının kaydı okunur.
     static func fetchClaude() async -> QuotaGroup {
-        do {
-            guard var token = try ClaudeAuth.accessToken() else {
+        if let fresh = await AgentQuotaMemory.shared.fresh("claude") { return fresh }
+        let result = await AgentCLIQueue.run { ClaudeUsageCLI.read() }
+        switch result {
+        case .success(let reading):
+            let windows = claudeWindows(reading.rateLimits)
+            guard !windows.isEmpty else {
                 return claudeGroup(
-                    status: .missingAuth,
-                    message: L(
-                        "Claude Code oturumu bulunamadı. Terminalde claude ile tekrar giriş yap.",
-                        "No Claude Code session. Sign in again with claude in Terminal."
-                    )
+                    status: .error(L("Claude kota biçimi okunamadı", "Could not read the Claude quota format")),
+                    message: L("Claude kota biçimi okunamadı", "Could not read the Claude quota format")
                 )
             }
-            if ClaudeAuth.needsRefresh() {
-                if let refreshed = try? await ClaudeAuth.refresh() {
-                    token = refreshed
-                }
+            var group = claudeGroup(status: .ready, message: nil, windows: windows)
+            group.plan = reading.plan
+            group.observedAt = reading.observedAt
+            await AgentQuotaMemory.shared.store(group)
+            return group
+        case .failure(let failure):
+            if let app = ClaudeAppUsageHistory.latest() {
+                var group = claudeGroup(status: .ready, message: nil, windows: app.windows)
+                group.observedAt = app.observedAt
+                group.note = L("Claude uygulamasının kaydından", "From the Claude app’s record")
+                return group
             }
-            guard let url = URL(string: "https://api.anthropic.com/api/oauth/usage") else {
-                return claudeGroup(
-                    status: .error(L("Adres yok", "No address")),
-                    message: L("Adres yok", "No address")
-                )
+            if failure == .unreachable, let last = await AgentQuotaMemory.shared.last("claude") {
+                return last
             }
-            var lastError = L("Kota alınamadı", "Could not load quota")
-            for attempt in 0..<2 {
-                do {
-                    let (data, response) = try await NetworkClient.get(url, headers: [
-                        "Authorization": "Bearer \(token)",
-                        "anthropic-beta": "oauth-2025-04-20",
-                        "anthropic-version": "2023-06-01",
-                        "Content-Type": "application/json"
-                    ])
-                    if response.statusCode == 401 || response.statusCode == 403 {
-                        if attempt == 0, let refreshed = try? await ClaudeAuth.refresh() {
-                            token = refreshed
-                            continue
-                        }
-                        lastError = L(
-                            "Claude oturumu süresi dolmuş. Terminalde claude /login ile tekrar giriş yap.",
-                            "Claude session expired. Run claude /login in Terminal."
-                        )
-                        break
-                    }
-                    guard (200..<300).contains(response.statusCode) else {
-                        lastError = Lf("Claude HTTP %1$d", "Claude HTTP %1$d", response.statusCode)
-                        break
-                    }
-                    guard let object = JSONValue.object(try? NetworkClient.json(data)) else {
-                        lastError = L("Claude yanıtı JSON değil", "Claude response is not JSON")
-                        break
-                    }
-                    let windows = claudeWindows(object)
-                    if windows.isEmpty {
-                        lastError = L("Claude kota biçimi okunamadı", "Could not read the Claude quota format")
-                        break
-                    }
-                    return claudeGroup(status: .ready, message: nil, windows: windows)
-                } catch {
-                    lastError = error.localizedDescription
-                    break
-                }
+            let message = claudeFailureMessage(failure)
+            switch failure {
+            case .missing, .needsSignIn:
+                return claudeGroup(status: .missingAuth, message: message)
+            case .outdated, .unreachable:
+                return claudeGroup(status: .error(message), message: message)
             }
-            return claudeGroup(status: .error(lastError), message: lastError)
-        } catch {
-            return claudeGroup(status: .error(error.localizedDescription), message: error.localizedDescription)
+        }
+    }
+
+    private static func claudeFailureMessage(_ failure: ClaudeUsageCLI.Failure) -> String {
+        switch failure {
+        case .missing:
+            return L("Claude Code bulunamadı. Yükle, sonra Terminal’de claude ile giriş yap.",
+                     "Claude Code was not found. Install it, then sign in with claude in Terminal.")
+        case .needsSignIn:
+            return L("Claude Code planlı bir hesapla oturum açmamış. Terminal’de claude /login çalıştır.",
+                     "Claude Code isn’t signed in with a plan. Run claude /login in Terminal.")
+        case .outdated:
+            return L("Claude Code bu sürümde kotayı dışarıya vermiyor. Terminal’de claude update çalıştır.",
+                     "This Claude Code version can’t report usage. Run claude update in Terminal.")
+        case .unreachable:
+            return L("Claude Code yanıt vermedi; biraz sonra tekrar denenecek.",
+                     "Claude Code didn’t answer; it will be tried again shortly.")
         }
     }
 
@@ -201,12 +190,16 @@ struct UsageService {
     static func claudeWindows(_ object: [String: Any]) -> [QuotaWindow] {
         var windows: [QuotaWindow] = []
 
+        let breakdown = claudeBreakdown(object)
+
         // Öncelik: sunucunun kendi normalize ettiği `limits` dizisi.
         for item in JSONValue.array(object["limits"]) ?? [] {
             guard let limit = JSONValue.object(item) else { continue }
             guard let percent = JSONValue.percentage(limit["percent"]) else { continue }
             let kind = JSONValue.string(limit["kind"]) ?? JSONValue.string(limit["group"]) ?? "limit"
             let reset = JSONValue.date(JSONValue.lookup(limit, keys: ["resets_at", "resetsAt"]))
+            let weekly = (JSONValue.string(limit["group"]) ?? kind).lowercased().contains("week")
+            let all = ["weekly_all", "weekly", "seven_day"].contains(kind.lowercased())
             windows.append(
                 QuotaWindow(
                     id: "claude-\(kind)",
@@ -214,8 +207,9 @@ struct UsageService {
                     percent: percent,
                     usedText: dollarText(limit),
                     resetText: TimeFormatters.resetPhrase(reset),
-                    detail: claudeSeverity(JSONValue.string(limit["severity"])),
-                    resetsAt: reset
+                    detail: (all ? breakdown : nil) ?? claudeSeverity(JSONValue.string(limit["severity"])),
+                    resetsAt: reset,
+                    windowMinutes: claudeMinutes(kind) ?? (weekly ? 10_080 : nil)
                 )
             )
         }
@@ -240,8 +234,9 @@ struct UsageService {
                         percent: percent,
                         usedText: dollarText(node),
                         resetText: TimeFormatters.resetPhrase(reset),
-                        detail: JSONValue.string(node["locked_reason"]),
-                        resetsAt: reset
+                        detail: JSONValue.string(node["locked_reason"]) ?? (item.key == "seven_day" ? breakdown : nil),
+                        resetsAt: reset,
+                        windowMinutes: claudeMinutes(item.key)
                     )
                 )
             }
@@ -294,6 +289,34 @@ struct UsageService {
         default:
             return kind.replacingOccurrences(of: "_", with: " ").capitalized
         }
+    }
+
+    private static func claudeMinutes(_ kind: String) -> Int? {
+        switch kind.lowercased() {
+        case "session", "five_hour": return 300
+        case let key where key.hasPrefix("weekly") || key.hasPrefix("seven_day"): return 10_080
+        default: return nil
+        }
+    }
+
+    /// Haftalık kullanımın nereye gittiği: "Claude Code %80 · Cowork %15 · Sohbet %5".
+    private static func claudeBreakdown(_ object: [String: Any]) -> String? {
+        guard let node = JSONValue.object(object["seven_day_breakdown"]) else { return nil }
+        let parts = (JSONValue.array(node["rows"]) ?? []).compactMap { item -> (String, Double)? in
+            guard let row = JSONValue.object(item),
+                  let percent = JSONValue.number(row["percent"]), percent >= 1 else { return nil }
+            let key = JSONValue.string(row["key"]) ?? ""
+            let name: String
+            switch key {
+            case "chat": name = L("Sohbet", "Chats")
+            case "other": name = L("Diğer", "Other")
+            default: name = JSONValue.string(row["display_name"]) ?? key
+            }
+            return (name, percent)
+        }
+        .sorted { $0.1 > $1.1 }
+        guard parts.count > 1 else { return nil }
+        return parts.map { Lf("%1$@ %%%2$d", "%1$@ %2$d%%", $0.0, Int($0.1.rounded())) }.joined(separator: " · ")
     }
 
     private static func claudeSeverity(_ raw: String?) -> String? {
@@ -354,150 +377,146 @@ struct UsageService {
         )
     }
 
+    /// Kota Codex'in kendi sunucusuna sorulur (`codex app-server`,
+    /// `account/rateLimits/read`). Oturumu Codex yönetir; Hâl `auth.json`'a dokunmaz.
     static func fetchCodex() async -> QuotaGroup {
-        guard var auth = CodexAuth.load() else {
-            return codexGroup(
-                status: .missingAuth,
-                message: L(
-                    "Codex oturumu bulunamadı (~/.codex/auth.json)",
-                    "No Codex session (~/.codex/auth.json)"
-                )
-            )
-        }
-        if CodexAuth.needsRefresh(auth.accessToken) {
-            if let refreshed = try? await CodexAuth.refresh() {
-                auth = refreshed
+        if let fresh = await AgentQuotaMemory.shared.fresh("codex") { return fresh }
+        let result = await AgentCLIQueue.run { CodexAppServer.read() }
+        switch result {
+        case .success(let reading):
+            let group = codexGroup(reading)
+            if group.status == .ready { await AgentQuotaMemory.shared.store(group) }
+            return group
+        case .failure(let failure):
+            if failure == .unreachable || failure == .refused,
+               let last = await AgentQuotaMemory.shared.last("codex") {
+                return last
+            }
+            let message = codexFailureMessage(failure)
+            switch failure {
+            case .missing, .needsSignIn:
+                return codexGroup(status: .missingAuth, message: message)
+            case .outdated, .unreachable, .refused:
+                return codexGroup(status: .error(message), message: message)
             }
         }
-        guard let url = URL(string: "https://chatgpt.com/backend-api/wham/usage") else {
-            return codexGroup(
-                status: .error(L("Adres yok", "No address")),
-                message: L("Adres yok", "No address")
-            )
-        }
-        var lastError = L("Kota alınamadı", "Could not load quota")
-        for attempt in 0..<2 {
-            var headers = [
-                "Authorization": "Bearer \(auth.accessToken)",
-                "Content-Type": "application/json"
-            ]
-            if let account = auth.accountId, !account.isEmpty {
-                headers["ChatGPT-Account-Id"] = account
-            }
-            do {
-                let (data, response) = try await NetworkClient.get(url, headers: headers)
-                if response.statusCode == 401 || response.statusCode == 403 {
-                    if attempt == 0, let refreshed = try? await CodexAuth.refresh() {
-                        auth = refreshed
-                        continue
-                    }
-                    lastError = L(
-                        "Codex oturumu süresi dolmuş. Terminalde codex login çalıştır.",
-                        "Codex session expired. Run codex login in Terminal."
-                    )
-                    break
-                }
-                guard (200..<300).contains(response.statusCode) else {
-                    lastError = Lf("Codex HTTP %1$d", "Codex HTTP %1$d", response.statusCode)
-                    break
-                }
-                guard let object = JSONValue.object(try? NetworkClient.json(data)) else {
-                    // 200 ama HTML dönerse oturum Cloudflare tarafından reddedilmiştir.
-                    lastError = L(
-                        "Codex yanıtı JSON değil, oturum geçersiz olabilir",
-                        "Codex response is not JSON; session may be invalid"
-                    )
-                    break
-                }
-                let windows = codexWindows(object)
-                if windows.isEmpty {
-                    lastError = L("Codex kota biçimi okunamadı", "Could not read the Codex quota format")
-                    break
-                }
-                return codexGroup(status: .ready, message: nil, windows: windows)
-            } catch {
-                lastError = error.localizedDescription
-                break
-            }
-        }
-        return codexGroup(status: .error(lastError), message: lastError)
     }
 
-    /// chatgpt.com/backend-api/wham/usage yanıtı. `used_percent` 0…100 aralığında.
-    static func codexWindows(_ object: [String: Any]) -> [QuotaWindow] {
+    static func codexGroup(_ reading: CodexAppServer.Reading) -> QuotaGroup {
+        let windows = codexWindows(reading.rateLimits)
+        guard !windows.isEmpty else {
+            let message = L("Codex kota biçimi okunamadı", "Could not read the Codex quota format")
+            return codexGroup(status: .error(message), message: message)
+        }
+        var group = codexGroup(status: .ready, message: nil, windows: windows)
+        group.plan = reading.plan
+        group.observedAt = reading.observedAt
+        group.resetCredits = codexResetCredits(reading.rateLimits, now: reading.observedAt)
+        return group
+    }
+
+    static func codexFailureMessage(_ failure: CodexAppServer.Failure) -> String {
+        switch failure {
+        case .missing:
+            return L("Codex uygulaması ya da CLI’si bulunamadı.", "Neither the Codex app nor its CLI was found.")
+        case .needsSignIn:
+            return L("Codex planlı bir ChatGPT hesabıyla oturum açmamış. Terminal’de codex login çalıştır.",
+                     "Codex isn’t signed in with a ChatGPT plan. Run codex login in Terminal.")
+        case .outdated:
+            return L("Bu Codex sürümü limitleri dışarıya vermiyor. Codex’i güncelle.",
+                     "This Codex version can’t report limits. Update Codex.")
+        case .unreachable, .refused:
+            return L("Codex yanıt vermedi; biraz sonra tekrar denenecek.",
+                     "Codex didn’t answer; it will be tried again shortly.")
+        }
+    }
+
+    /// `account/rateLimits/read` yanıtı. Ana kova (`codex`) önce, ek kovalar adlarıyla.
+    /// `usedPercent` 0…100, `resetsAt` Unix saniyesi.
+    static func codexWindows(_ result: [String: Any]) -> [QuotaWindow] {
+        var buckets: [(id: String, snapshot: [String: Any])] = []
+        if let byID = JSONValue.object(result["rateLimitsByLimitId"]) {
+            for key in byID.keys.sorted(by: { ($0 == "codex" ? 0 : 1, $0) < ($1 == "codex" ? 0 : 1, $1) }) {
+                if let snapshot = JSONValue.object(byID[key]) { buckets.append((key, snapshot)) }
+            }
+        } else if let single = JSONValue.object(result["rateLimits"]) {
+            buckets.append((JSONValue.string(single["limitId"]) ?? "codex", single))
+        }
         var windows: [QuotaWindow] = []
-        let plan = JSONValue.string(object["plan_type"])?.capitalized
+        for bucket in buckets {
+            let main = bucket.id == "codex"
+            let label = main ? nil : codexLabel(JSONValue.string(bucket.snapshot["limitName"]) ?? bucket.id)
+            var found: [QuotaWindow] = []
+            for slot in ["primary", "secondary"] {
+                guard let node = JSONValue.object(bucket.snapshot[slot]),
+                      let used = JSONValue.number(node["usedPercent"]), used.isFinite else { continue }
+                let minutes = JSONValue.number(node["windowDurationMins"]).map { Int($0) }
+                let reset = unixDate(node["resetsAt"])
+                var title = codexWindowTitle(minutes.map { Double($0) * 60 }, fallback: slot + "_window")
+                if let label { title = "\(label) · \(title)" }
+                found.append(QuotaWindow(
+                    id: "codex-\(bucket.id)-\(minutes.map(String.init) ?? slot)",
+                    title: title,
+                    percent: min(100, max(0, used)) / 100,
+                    usedText: "",
+                    resetText: TimeFormatters.resetPhrase(reset),
+                    resetsAt: reset,
+                    windowMinutes: minutes
+                ))
+            }
+            // Bazı hesaplar yalnızca kişisel bir sınır bildirir.
+            if found.isEmpty, let individual = JSONValue.object(bucket.snapshot["individualLimit"]),
+               let remaining = JSONValue.number(individual["remainingPercent"]), remaining.isFinite {
+                let reset = unixDate(individual["resetsAt"])
+                found.append(QuotaWindow(
+                    id: "codex-\(bucket.id)-individual",
+                    title: label ?? L("Kişisel sınır", "Individual limit"),
+                    percent: min(100, max(0, 100 - remaining)) / 100,
+                    usedText: "",
+                    resetText: TimeFormatters.resetPhrase(reset),
+                    resetsAt: reset
+                ))
+            }
+            windows += found.sorted { ($0.windowMinutes ?? .max) < ($1.windowMinutes ?? .max) }
 
-        if let rateLimit = JSONValue.object(object["rate_limit"]) {
-            windows.append(contentsOf: codexRateLimit(rateLimit, prefix: "codex", detail: plan))
-        }
-
-        for item in JSONValue.array(object["additional_rate_limits"]) ?? [] {
-            guard let entry = JSONValue.object(item),
-                  let rateLimit = JSONValue.object(entry["rate_limit"]) else { continue }
-            let name = JSONValue.string(entry["limit_name"]) ?? L("ek", "extra")
-            windows.append(
-                contentsOf: codexRateLimit(rateLimit, prefix: "codex-\(name)", label: codexLabel(name), detail: nil)
-            )
-        }
-
-        if let credits = JSONValue.object(object["credits"]),
-           (credits["has_credits"] as? Bool) == true {
-            let unlimited = (credits["unlimited"] as? Bool) == true
-            let balance = JSONValue.number(credits["balance"]) ?? 0
-            windows.append(
-                QuotaWindow(
+            if main, let credits = JSONValue.object(bucket.snapshot["credits"]),
+               (credits["hasCredits"] as? Bool) == true {
+                let unlimited = (credits["unlimited"] as? Bool) == true
+                let balance = JSONValue.number(credits["balance"]) ?? Double(JSONValue.string(credits["balance"]) ?? "") ?? 0
+                windows.append(QuotaWindow(
                     id: "codex-credits",
                     title: L("Kredi", "Credits"),
                     percent: 0,
-                    usedText: unlimited
-                        ? L("Sınırsız", "Unlimited")
-                        : Lf("%1$@ kredi", "%1$@ credits", balance.clean),
+                    usedText: unlimited ? L("Sınırsız", "Unlimited") : Lf("%1$@ kredi", "%1$@ credits", balance.clean),
                     resetText: "",
-                    detail: nil,
                     hasLimit: false
-                )
-            )
+                ))
+            }
         }
-
         return dedupe(windows)
     }
 
-    private static func codexRateLimit(
-        _ rateLimit: [String: Any],
-        prefix: String,
-        label: String? = nil,
-        detail: String?
-    ) -> [QuotaWindow] {
-        var windows: [QuotaWindow] = []
-        for key in ["primary_window", "secondary_window"] {
-            guard let node = JSONValue.object(rateLimit[key]) else { continue }
-            guard let percent = JSONValue.percentage(node["used_percent"]) else { continue }
-            let span = JSONValue.number(node["limit_window_seconds"])
-            var title = codexWindowTitle(span, fallback: key)
-            if let label { title = "\(label) · \(title)" }
-            let reset = codexResetDate(node)
-            windows.append(
-                QuotaWindow(
-                    id: "\(prefix)-\(key)",
-                    title: title,
-                    percent: percent,
-                    usedText: "",
-                    resetText: TimeFormatters.resetPhrase(reset),
-                    detail: detail,
-                    resetsAt: reset
-                )
-            )
+    /// Hesapta biriken sıfırlama hakları; bunları bildirmeyen bir Codex için nil.
+    static func codexResetCredits(_ result: [String: Any], now: Date) -> QuotaResetCredits? {
+        guard result.keys.contains("rateLimitResetCredits") else { return nil }
+        let node = JSONValue.object(result["rateLimitResetCredits"])
+        let listed = (JSONValue.array(node?["credits"]) ?? []).compactMap { item -> QuotaResetCredits.Credit? in
+            guard let credit = JSONValue.object(item),
+                  let id = JSONValue.string(credit["id"]), !id.isEmpty,
+                  (JSONValue.string(credit["status"]) ?? "available") == "available" else { return nil }
+            let expires = unixDate(credit["expiresAt"])
+            if let expires, expires <= now { return nil }
+            return QuotaResetCredits.Credit(id: id, title: JSONValue.string(credit["title"]), expiresAt: expires)
         }
-        return windows
+        let credits = listed.sorted { ($0.expiresAt ?? .distantFuture) < ($1.expiresAt ?? .distantFuture) }
+        let count = max(credits.count, Int(JSONValue.number(node?["availableCount"]) ?? 0))
+        return QuotaResetCredits(available: count, credits: credits)
     }
 
-    private static func codexResetDate(_ node: [String: Any]) -> Date? {
-        if let at = JSONValue.date(node["reset_at"]) { return at }
-        if let after = JSONValue.number(node["reset_after_seconds"]), after > 0 {
-            return Date().addingTimeInterval(after)
-        }
-        return nil
+    /// Unix saniyesi; milisaniye yazan sürümler de olur.
+    private static func unixDate(_ value: Any?) -> Date? {
+        guard let number = JSONValue.number(value), number.isFinite, number > 0 else { return nil }
+        return Date(timeIntervalSince1970: number > 100_000_000_000 ? number / 1000 : number)
     }
 
     private static func codexWindowTitle(_ seconds: Double?, fallback: String) -> String {
@@ -713,136 +732,11 @@ struct UsageService {
     }
 }
 
-/// Claude kimlik bilgisini bellekte tutar.
-///
-/// Kayıt Claude Code'a ait olduğu için ACL'inde Hâl yok; ilk okumada macOS bir kez
-/// sorar. Süre dolmamış bir jeton varken tekrar okumaya gerek yoktur, bu yüzden
-/// önbellek jetonun geçerlilik süresine bağlanır: dakikalık yenilemeler anahtar
-/// zincirine hiç gitmez.
-private final class KeychainCache: @unchecked Sendable {
-    private let lock = NSLock()
-    private var stored: [String: Any]?
-    private var validUntil = Date.distantPast
-
-    func value() -> [String: Any]? {
-        lock.lock(); defer { lock.unlock() }
-        guard let stored, Date() < validUntil else { return nil }
-        return stored
-    }
-
-    func store(_ value: [String: Any]) {
-        lock.lock()
-        stored = value
-        // Jetonun bitimine 5 dk kalana kadar geçerli; üst sınır 30 dk.
-        let expiry = KeychainCache.tokenExpiry(value)?.addingTimeInterval(-300)
-        let cap = Date().addingTimeInterval(1800)
-        validUntil = min(expiry ?? cap, cap)
-        lock.unlock()
-    }
-
-    func clear() {
-        lock.lock(); stored = nil; validUntil = .distantPast; lock.unlock()
-    }
-
-    private static func tokenExpiry(_ json: [String: Any]) -> Date? {
-        guard let oauth = JSONValue.object(json["claudeAiOauth"]),
-              let raw = JSONValue.number(oauth["expiresAt"]) else { return nil }
-        return Date(timeIntervalSince1970: raw > 10_000_000_000 ? raw / 1000 : raw)
-    }
-}
-
+/// Claude Code girişini Terminal'de açar. Hâl Claude'un oturumunu okumaz ya da
+/// yenilemez; giriş tamamen Claude Code'a aittir.
 enum ClaudeAuth {
-    private static let credentialService = "Claude Code-credentials"
-    private static let cache = KeychainCache()
-
-    /// Kimlik bilgisini doğrudan Security çerçevesinden okur.
-    /// `/usr/bin/security` ile okumak, kaydın erişim listesinde olmayan bir süreç
-    /// istekte bulunduğu için her yenilemede yeni bir anahtar zinciri sorusu doğuruyordu.
-    /// Uygulama kendi okuduğunda kullanıcı bir kez “Her Zaman İzin Ver” diyebilir.
-    /// Sonuç ayrıca kısa süre bellekte tutulur; tek yenilemede üç kez okunmaz.
-    static func credentialJSON() throws -> [String: Any]? {
-        if let cached = cache.value() { return cached }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: credentialService,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data, !data.isEmpty else {
-            // Yalnızca kayıt bulunamadığında `security` ile bir kez daha bak.
-            // Erişim reddedildiyse tekrar denemek ikinci bir şifre sorusu doğurur.
-            guard status == errSecItemNotFound, let fallback = legacyCredentialJSON() else { return nil }
-            cache.store(fallback)
-            return fallback
-        }
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        if let json { cache.store(json) }
-        return json
-    }
-
-    /// Bazı kurulumlarda kayıt yalnızca `security` üzerinden görünüyor.
-    private static func legacyCredentialJSON() -> [String: Any]? {
-        guard let result = try? ProcessRunner.output(
-            "/usr/bin/security",
-            arguments: ["find-generic-password", "-s", credentialService, "-w"],
-            timeout: 5
-        ), result.status == 0, !result.data.isEmpty else { return nil }
-        return (try? JSONSerialization.jsonObject(with: result.data)) as? [String: Any]
-    }
-
-    static func invalidateCache() {
-        cache.clear()
-    }
-
-    static func accessToken() throws -> String? {
-        guard let json = try credentialJSON() else { return nil }
-        if let oauth = JSONValue.object(json["claudeAiOauth"]) {
-            return JSONValue.string(oauth["accessToken"])
-        }
-        return JSONValue.string(json["accessToken"])
-    }
-
-    static func needsRefresh() -> Bool {
-        guard let json = try? credentialJSON(),
-              let oauth = JSONValue.object(json["claudeAiOauth"]),
-              let expires = JSONValue.number(oauth["expiresAt"]) else { return false }
-        let date = Date(timeIntervalSince1970: expires > 10_000_000_000 ? expires / 1000 : expires)
-        return date.timeIntervalSinceNow < 60
-    }
-
-    static func refresh() async throws -> String? {
-        guard let json = try credentialJSON(),
-              let oauth = JSONValue.object(json["claudeAiOauth"]),
-              let refreshToken = JSONValue.string(oauth["refreshToken"]) else { return nil }
-        let urls = [
-            "https://platform.claude.com/v1/oauth/token",
-            "https://console.anthropic.com/v1/oauth/token"
-        ]
-        for raw in urls {
-            guard let url = URL(string: raw) else { continue }
-            let (data, response) = try await NetworkClient.post(url, json: [
-                "grant_type": "refresh_token",
-                "refresh_token": refreshToken,
-                "client_id": "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-            ])
-            guard (200..<300).contains(response.statusCode) else { continue }
-            let object = JSONValue.object(try NetworkClient.json(data)) ?? [:]
-            if let token = JSONValue.string(JSONValue.lookup(object, keys: ["access_token", "accessToken"])) {
-                persistOAuth(
-                    accessToken: token,
-                    refreshToken: JSONValue.string(JSONValue.lookup(object, keys: ["refresh_token", "refreshToken"])),
-                    expiresIn: JSONValue.number(JSONValue.lookup(object, keys: ["expires_in", "expiresIn"]))
-                )
-                return token
-            }
-        }
-        return nil
-    }
-
     static func openLogin() -> String? {
-        guard let binary = ProcessRunner.which("claude") else {
+        guard let binary = ClaudeUsageCLI.executable()?.path ?? ProcessRunner.which("claude") else {
             return L(
                 "claude komutu bulunamadı. Claude Code’u yükle, sonra Terminal’de claude /login çalıştır.",
                 "claude command not found. Install Claude Code, then run claude /login in Terminal."
@@ -870,132 +764,47 @@ enum ClaudeAuth {
         }
     }
 
-    private static func persistOAuth(accessToken: String, refreshToken: String?, expiresIn: Double?) {
-        guard var json = try? credentialJSON() else { return }
-        var oauth = (json["claudeAiOauth"] as? [String: Any]) ?? [:]
-        oauth["accessToken"] = accessToken
-        if let refreshToken, !refreshToken.isEmpty {
-            oauth["refreshToken"] = refreshToken
-        }
-        if let expiresIn, expiresIn > 0 {
-            oauth["expiresAt"] = Date().addingTimeInterval(expiresIn).timeIntervalSince1970 * 1000
-        }
-        json["claudeAiOauth"] = oauth
-        guard let data = try? JSONSerialization.data(withJSONObject: json) else { return }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: credentialService
-        ]
-        SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
-        cache.store(json)
-    }
-
     private static func shellEscape(_ value: String) -> String {
         "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 }
 
-enum CodexAuth {
-    struct Session {
-        var accessToken: String
-        var accountId: String?
-        var refreshToken: String?
-        var clientID: String
+/// Claude ve Codex okumalarının bellekteki son hâli. CLI başlatmak ucuz değil:
+/// taze bir okuma tekrar sorulmaz, yanıt alınamayan bir denetimde de son okuma
+/// (yenilenmiş pencereleri sıfırlanmış olarak) gösterilmeye devam eder.
+actor AgentQuotaMemory {
+    static let shared = AgentQuotaMemory()
+    /// Bundan yeni bir okuma yeniden sorulmaz.
+    static let freshness: TimeInterval = 60
+    /// Yanıt alınamadığında son okuma bu kadar eskiyene dek gösterilir.
+    static let retention: TimeInterval = 6 * 3600
+
+    private var groups: [String: (group: QuotaGroup, fetched: Date)] = [:]
+
+    func store(_ group: QuotaGroup) {
+        groups[group.id] = (group, Date())
     }
 
-    private static var authURL: URL {
-        URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".codex/auth.json")
+    func invalidate(_ id: String) {
+        groups[id] = nil
     }
 
-    static func load() -> Session? {
-        guard let object = readJSON() else { return nil }
-        let tokens = JSONValue.object(object["tokens"]) ?? object
-        guard let access = JSONValue.string(JSONValue.lookup(tokens, keys: ["access_token", "accessToken"])) else {
-            return nil
-        }
-        return Session(
-            accessToken: access,
-            accountId: JSONValue.string(JSONValue.lookup(tokens, keys: ["account_id", "accountId"])),
-            refreshToken: JSONValue.string(JSONValue.lookup(tokens, keys: ["refresh_token", "refreshToken"])),
-            clientID: jwtClientID(access) ?? "app_EMoamEEZ73f0CkXaXp7hrann"
-        )
+    func fresh(_ id: String, now: Date = Date()) -> QuotaGroup? {
+        guard let entry = groups[id], now.timeIntervalSince(entry.fetched) < Self.freshness else { return nil }
+        return Self.current(entry.group, now: now)
     }
 
-    static func needsRefresh(_ accessToken: String) -> Bool {
-        guard let exp = jwtExpiry(accessToken) else { return true }
-        return exp.timeIntervalSinceNow < 120
+    func last(_ id: String, now: Date = Date()) -> QuotaGroup? {
+        guard let entry = groups[id], now.timeIntervalSince(entry.fetched) < Self.retention else { return nil }
+        var group = Self.current(entry.group, now: now)
+        group.note = L("Son okuma gösteriliyor; şu an yanıt alınamadı.", "Showing the last reading; no answer right now.")
+        return group
     }
 
-    static func refresh() async throws -> Session? {
-        guard let current = load(), let refresh = current.refreshToken else { return nil }
-        let urls = [
-            "https://auth.openai.com/oauth/token",
-            "https://auth0.openai.com/oauth/token"
-        ]
-        for raw in urls {
-            guard let url = URL(string: raw) else { continue }
-            let (data, response) = try await NetworkClient.post(url, form: [
-                "grant_type": "refresh_token",
-                "refresh_token": refresh,
-                "client_id": current.clientID
-            ])
-            guard (200..<300).contains(response.statusCode) else { continue }
-            let object = JSONValue.object(try NetworkClient.json(data)) ?? [:]
-            guard let access = JSONValue.string(JSONValue.lookup(object, keys: ["access_token", "accessToken"])) else {
-                continue
-            }
-            persist(
-                accessToken: access,
-                refreshToken: JSONValue.string(JSONValue.lookup(object, keys: ["refresh_token", "refreshToken"])) ?? refresh,
-                idToken: JSONValue.string(JSONValue.lookup(object, keys: ["id_token", "idToken"]))
-            )
-            return Session(
-                accessToken: access,
-                accountId: current.accountId,
-                refreshToken: JSONValue.string(JSONValue.lookup(object, keys: ["refresh_token", "refreshToken"])) ?? refresh,
-                clientID: current.clientID
-            )
-        }
-        return nil
-    }
-
-    private static func persist(accessToken: String, refreshToken: String, idToken: String?) {
-        guard var object = readJSON() else { return }
-        var tokens = JSONValue.object(object["tokens"]) ?? [:]
-        tokens["access_token"] = accessToken
-        tokens["refresh_token"] = refreshToken
-        if let idToken { tokens["id_token"] = idToken }
-        object["tokens"] = tokens
-        object["last_refresh"] = ISO8601DateFormatter().string(from: Date())
-        guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]) else { return }
-        try? data.write(to: authURL, options: .atomic)
-    }
-
-    private static func readJSON() -> [String: Any]? {
-        guard let data = try? Data(contentsOf: authURL),
-              let json = try? JSONSerialization.jsonObject(with: data) else { return nil }
-        return JSONValue.object(json)
-    }
-
-    private static func jwtExpiry(_ token: String) -> Date? {
-        guard let payload = jwtPayload(token),
-              let exp = JSONValue.number(payload["exp"]) else { return nil }
-        return Date(timeIntervalSince1970: exp)
-    }
-
-    private static func jwtClientID(_ token: String) -> String? {
-        jwtPayload(token).flatMap { JSONValue.string($0["client_id"]) }
-    }
-
-    private static func jwtPayload(_ token: String) -> [String: Any]? {
-        let parts = token.split(separator: ".")
-        guard parts.count >= 2 else { return nil }
-        var base64 = String(parts[1])
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        while base64.count % 4 != 0 { base64.append("=") }
-        guard let data = Data(base64Encoded: base64) else { return nil }
-        return JSONValue.object(try? JSONSerialization.jsonObject(with: data))
+    private static func current(_ group: QuotaGroup, now: Date) -> QuotaGroup {
+        var group = group
+        group.windows = group.windows.map { $0.current(at: now) }
+        return group
     }
 }
 

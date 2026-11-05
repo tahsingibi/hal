@@ -48,11 +48,10 @@ struct FeatureHubView: View {
     private let sections: [[SettingsTab]] = [[.focus, .quota], [.worship, .calendar, .fitness, .money]]
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack {
-                        Text(L("Özellikler", "Features")).font(.headline)
+                        Text(L("Modüller", "Modules")).font(.headline)
                         Spacer()
                         Button(L("İzinleri incele", "Review permissions")) { onSettings(.permissions) }
                     }
@@ -108,10 +107,6 @@ struct FeatureHubView: View {
                         .font(.callout).foregroundStyle(.secondary)
                     Button(L("Panel düzenini değiştir", "Customize panel layout")) { onSettings(.appearance) }
                 }.hubCard()
-            }
-            .padding(24)
-            .frame(maxWidth: 850, alignment: .leading)
-            .frame(maxWidth: .infinity)
         }
     }
 
@@ -171,8 +166,7 @@ struct PermissionsView: View {
     var onSettings: (SettingsTab) -> Void
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 16) {
                 Text(L("İzinler isteğe bağlıdır. Erişim yalnızca ilgili özelliğin düğmesine bastığında istenir.", "Permissions are optional. Access is requested only when you use the relevant feature’s button."))
                     .font(.callout).foregroundStyle(.secondary)
                 permission("calendar", title: L("Takvim", "Calendar"),
@@ -198,7 +192,6 @@ struct PermissionsView: View {
                            status: L("Ses mikseri", "Volume mixer"), unused: false, tab: .mixer)
                 Label(L("Konum elle seçilir. Namaz vakitleri için sistem konum izni gerekmez.", "Location is chosen manually. Prayer times do not require system location access."), systemImage: "location.slash")
                     .font(.caption).foregroundStyle(.secondary).padding(.top, 8)
-            }.padding(24).frame(maxWidth: 850, alignment: .leading).frame(maxWidth: .infinity)
         }
         .onAppear(perform: reload)
         .onChange(of: scenePhase) { _, phase in if phase == .active { reload() } }
@@ -239,7 +232,6 @@ struct PermissionsView: View {
 private extension View {
     func hubCard() -> some View {
         padding(16)
-            .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 13))
-            .overlay(RoundedRectangle(cornerRadius: 13).strokeBorder(Color.primary.opacity(0.06)))
+            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }

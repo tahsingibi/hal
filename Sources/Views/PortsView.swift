@@ -17,8 +17,7 @@ struct PortsUtilityView: View {
 
 struct PortsPanel: View {
     var showsTitle: Bool
-    /// Ayarlar ayrıntısı Form ister. Sonsuz yükseklikli ScrollView burada
-    /// ölçülmez ve sekme bomboş kalır; diğer ayar sekmeleri de Form kullanır.
+    /// Ayarlar sayfasında kartlar halinde, sayfanın kendi kaydırmasıyla gösterilir.
     var embedsInSettings: Bool = false
     @ObservedObject private var service = PortService.shared
     @AppStorage("hal.ports.onlyMine") private var onlyMine = true
@@ -63,25 +62,26 @@ struct PortsPanel: View {
     }
 
     private var settingsForm: some View {
-        Form {
-            Section {
+        VStack(alignment: .leading, spacing: 20) {
+            SettingsCard {
                 searchField
                 metaRow
                 statusBlock
             }
-            Section {
-                settingsRows
-            } footer: {
-                VStack(alignment: .leading, spacing: 4) {
-                    caption
-                    Text(L(
-                        "Menü çubuğu ikonuna sağ tıklayıp Araçlar > Açık portlar ile de açılır.",
-                        "Also available via right-click on the menu bar icon → Tools > Open ports."
-                    ))
+            SettingsCard(title: L("Dinleyen portlar", "Listening ports")) {
+                VStack(alignment: .leading, spacing: 0) {
+                    settingsRows
                 }
             }
+            VStack(alignment: .leading, spacing: 4) {
+                caption
+                SettingsFootnote(L(
+                    "Menü çubuğu ikonuna sağ tıklayıp Araçlar > Açık portlar ile de açılır.",
+                    "Also available via right-click on the menu bar icon → Tools > Open ports."
+                ))
+            }
+            .padding(.horizontal, 4)
         }
-        .formStyle(.grouped)
     }
 
     private var caption: some View {

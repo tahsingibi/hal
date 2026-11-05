@@ -6,6 +6,23 @@
     <description>Hâl güncellemeleri</description>
     <language>tr</language>
     <item>
+      <title>1.2.0</title>
+      <pubDate>Thu, 05 Nov 2026 19:40:00 +0300</pubDate>
+      <sparkle:version>4</sparkle:version>
+      <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <ul>
+          <li>Claude ve Codex kotası CLI’lerden okunur; anahtar zinciri izin soruları yok</li>
+          <li>Kotalar tek sayfada; yenilenme süresi ve Codex sıfırlama hakları</li>
+          <li>Yenilenen temizlik modu: Esc ×5 ile kilit açma, ekranda başlık ve not</li>
+          <li>Yeniden düzenlenen ayarlar</li>
+          <li>Pencere değiştirici: doğru pencere, kullanıma göre sıra, daha hızlı liste</li>
+        </ul>
+      ]]></description>
+      <enclosure url="https://github.com/tahsingibi/hal/releases/download/v1.2.0/Hal-1.2.0.zip" sparkle:edSignature="xSd6Gmo7PBYerLGmiWQaDD4bOUwx/mWEaQ7HGOzLdE1dl2PfxwW0imI5dKWbmCf3J98M2D3KrLjnXTjzjQixCA==" sparkle:version="4" sparkle:shortVersionString="1.2.0" length="5851712" type="application/octet-stream"/>
+    </item>
+    <item>
       <title>1.1.0</title>
       <pubDate>Sat, 31 Oct 2026 22:40:00 +0300</pubDate>
       <sparkle:version>3</sparkle:version>

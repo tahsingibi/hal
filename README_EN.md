@@ -47,7 +47,7 @@ macOS 14+ · MIT License
 
 ## Quick start
 
-The ready-to-use build is the DMG on [Releases](https://github.com/tahsingibi/hal/releases/latest). The published release is **1.1.0** (31 October 2026).
+The ready-to-use build is the DMG on [Releases](https://github.com/tahsingibi/hal/releases/latest). The published release is **1.2.0** (5 November 2026).
 
 1. Open the DMG and drag **Hal** to **Applications**.
 2. First launch: System Settings → Privacy & Security → **Open Anyway**.
@@ -118,9 +118,11 @@ Claude, Codex and Grok. Toggles are off on first setup; even if a CLI is install
 
 | | Source | Session |
 | --- | --- | --- |
-| Claude | `api.anthropic.com/api/oauth/usage` | Keychain, "Claude Code-credentials" |
-| Codex | `chatgpt.com/backend-api/wham/usage` | `~/.codex/auth.json` |
+| Claude | `claude` control protocol (`get_usage`, the same data as /usage) | Managed by Claude Code; Hâl never reads it |
+| Codex | `codex app-server` (`account/rateLimits/read`) | Managed by Codex; Hâl never reads it |
 | Grok | grok CLI billing response | `~/.grok/auth.json` |
+
+Claude and Codex quotas are asked of the CLIs themselves, so there are no Keychain prompts and Hâl never refreshes anyone's sign-in. If Claude Code can't answer, the Claude desktop app's `plan-usage-history.json` record is read instead. Banked Codex resets appear on the same page and can be used after a confirmation.
 
 - **Grok:** The weekly limit and Grok Build are read from this billing response. If the token is about to expire, it is renewed with the refresh token in the same file and written back. Prepaid balance and management keys do not factor into this figure.
 - **No session:** For Claude or Grok, a Terminal login can be opened from the window. Chats, the session directory and browser cookies are not read; Chrome Safe Storage is never queried.
@@ -204,7 +206,7 @@ Other notifications are off by default. Modules produce an `Alert` in `ModuleAle
 
 ### Other features
 
-- **Cleaning mode:** Covers the screen with a shield; this part works without permissions. Locking system shortcuts also requires Accessibility and Input Monitoring. Permission is requested with the button in Settings; it doesn't send you to System Settings on every launch.
+- **Cleaning mode:** Locks the keyboard, system keys, scrolling and trackpad gestures; mouse and trackpad clicks keep working. Unlock by pressing Esc 5 times or with the Unlock button on screen. The screen blacks out or a small corner indicator appears; your title and note stay on screen. Needs Accessibility; without it the lock never starts.
 - **Keep awake:** While Always is on, the Mac does not idle-sleep or sleep the display. Optional timer, while apps from the Focus list are frontmost, while on power or an external display, and while the lid is closed. The lid rule blocks idle sleep; macOS can still sleep on lid close when there is no external power and display.
 - **Launch at login:** Updated only when the switch in Settings changes.
 
@@ -214,12 +216,12 @@ The app is **not** sandboxed. Everything it reads is listed here:
 
 | What | From where / when | Note |
 | --- | --- | --- |
-| Claude quota | Keychain, "Claude Code-credentials" | Chats are not read |
-| Codex quota | `~/.codex/auth.json` | Session directory and chat bodies are not read |
+| Claude quota | Asked of the `claude` CLI; fallback `~/Library/Application Support/Claude/plan-usage-history.json` | Neither the Keychain nor chats are read |
+| Codex quota | Asked of `codex app-server` | `auth.json`, the session directory and chat bodies are not read |
 | Grok quota | `~/.grok/auth.json` | Written back to the same file when the token is refreshed. Cookies and the console.x.ai management key are not requested |
 | Prayer times | `api.aladhan.com` once a city is chosen | No request until coordinates are chosen |
 | Calendar | EventKit after pressing the button | Not accessed without permission |
-| Cleaning shortcut lock | Accessibility and Input Monitoring | Only via the button in Settings |
+| Cleaning mode lock | Accessibility | Keys are swallowed only while locked; nothing but the Esc count is read |
 | Daily records | `~/Library/Application Support/Hal/` | The old `secrets.json` is not part of the quota path |
 | Keep awake | Frontmost app, power source, displays, lid | No network |
 | Homebrew | `brew` on this Mac | Network only if `brew` itself asks for it |
@@ -230,10 +232,10 @@ The app is **not** sandboxed. Everything it reads is listed here:
 
 A downloaded copy asks about new versions on its own; nothing installs automatically. It checks once a day, and you can also trigger it from Settings › About › *Check for updates*.
 
-- **Channel:** `https://raw.githubusercontent.com/tahsingibi/hal/main/appcast.xml`. The app reads this file from the repo. The zip goes on a GitHub Release; its address is the `enclosure` line inside `appcast.xml`. The channel lists **1.1.0** (build 3).
+- **Channel:** `https://raw.githubusercontent.com/tahsingibi/hal/main/appcast.xml`. The app reads this file from the repo. The zip goes on a GitHub Release; its address is the `enclosure` line inside `appcast.xml`. The channel lists **1.2.0** (build 4).
 - **Sparkle:** The bundle ships with Sparkle 2.10.0. `build.sh` downloads the archive and verifies it with SHA-256.
 - **Keys:** The public key is in `SUPublicEDKey`. The private key is in the login keychain (account name `Hal`) and never enters the repo. If the key is deleted, updates after this version can no longer be signed.
-- **This release:** the DMG and the Sparkle zip on the GitHub Release. An in-app check sees 1.1.0.
+- **This release:** the DMG and the Sparkle zip on the GitHub Release. An in-app check sees 1.2.0.
 - **A later in-app update:** `scripts/publish-update.sh` builds a zip only when a **Developer ID Application** certificate is present. The zip goes on a GitHub Release, and its address is written to the `enclosure` line inside `appcast.xml`. Notarization needs `NOTARY_KEYCHAIN_PROFILE`. `CFBundleVersion` increases strictly.
 - **Continuity:** The bundle identifier never changes, so `~/Library/Application Support/Hal` and preferences stay in place.
 
@@ -269,6 +271,18 @@ Tabs and menu bar icons are derived from the `ModuleKind` registry in `Sources/M
 ## Release notes
 
 The About page in the app shows the same list.
+
+### 1.2.0 — 5 November 2026
+
+- Quotas: Claude and Codex usage is read straight from their CLIs; Keychain prompts are gone and Hâl never refreshes anyone’s sign-in
+- Quotas on one page: plan, time until renewal, a marker for how much of the window has passed and Claude’s weekly usage breakdown
+- Codex resets: how many are banked, when the next one expires and use with a confirmation
+- Cleaning mode rebuilt: the keyboard, system keys, scrolling and gestures are locked; unlock by pressing Esc 5 times or with the Unlock button
+- Cleaning mode: a blackout or a small corner indicator; your title and note stay on screen
+- Settings redesigned: every page shares one layout with icon rows and cards; a collapsible sidebar
+- Window switcher: the chosen window comes forward exactly, and windows on other desktops are found too
+- Window switcher: order follows real use; pressing the shortcut again returns to the previous window
+- Window switcher: ghost and helper windows are filtered out and the list opens much faster
 
 ### 1.1.0 — 31 October 2026
 

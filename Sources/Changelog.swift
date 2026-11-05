@@ -26,6 +26,32 @@ enum Changelog {
 
     static let releases: [Release] = [
         Release(
+            version: "1.2.0",
+            date: "2026-11-05",
+            notesTR: [
+                "Kotalar: Claude ve Codex kotası doğrudan CLI’lerden okunur; anahtar zinciri izin soruları ortadan kalktı ve Hâl hiçbir oturumu yenilemez",
+                "Kotalar tek sayfada: plan, yenilenmeye kalan süre, pencere süresinin ne kadarının geçtiğini gösteren işaret ve Claude haftalık kullanım dağılımı",
+                "Codex sıfırlama hakları: kaç hak olduğu, sıradakinin ne zaman sona ereceği ve onaylı kullanım",
+                "Temizlik modu yenilendi: klavye, sistem tuşları, kaydırma ve hareketler kilitlenir; kilidi Esc’ye 5 kez basarak ya da Kilidi aç düğmesiyle açarsın",
+                "Temizlik modu: karartma ya da köşede küçük gösterge; başlık ve not ekranda kalır",
+                "Ayarlar yeniden düzenlendi: her sayfa aynı düzende, simgeli satırlar ve kartlar; katlanabilir kenar çubuğu",
+                "Pencere değiştirici: seçilen pencere tam olarak öne gelir, başka masaüstündeki pencereler de bulunur",
+                "Pencere değiştirici: sıralama gerçek kullanıma göre; kısayola tekrar basmak önceki pencereye döndürür",
+                "Pencere değiştirici: hayalet ve yardımcı pencereler listeden çıkarıldı, liste çok daha hızlı açılır"
+            ],
+            notesEN: [
+                "Quotas: Claude and Codex usage is read straight from their CLIs; Keychain prompts are gone and Hâl never refreshes anyone’s sign-in",
+                "Quotas on one page: plan, time until renewal, a marker for how much of the window has passed and Claude’s weekly usage breakdown",
+                "Codex resets: how many are banked, when the next one expires and use with a confirmation",
+                "Cleaning mode rebuilt: the keyboard, system keys, scrolling and gestures are locked; unlock by pressing Esc 5 times or with the Unlock button",
+                "Cleaning mode: a blackout or a small corner indicator; your title and note stay on screen",
+                "Settings redesigned: every page shares one layout with icon rows and cards; a collapsible sidebar",
+                "Window switcher: the chosen window comes forward exactly, and windows on other desktops are found too",
+                "Window switcher: order follows real use; pressing the shortcut again returns to the previous window",
+                "Window switcher: ghost and helper windows are filtered out and the list opens much faster"
+            ]
+        ),
+        Release(
             version: "1.1.0",
             date: "2026-10-31",
             notesTR: [
