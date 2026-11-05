@@ -22,58 +22,16 @@ rm -rf "$ROOT/AppIcon.iconset"
 rm -rf "$MODULE_CACHE"
 mkdir -p "$BIN" "$RES" "$MODULE_CACHE"
 
-if python3 - <<'PY'
-from PIL import Image, ImageDraw
-import math, os
-
-root = os.environ["HAL_ROOT"]
-iconset = os.path.join(root, "AppIcon.iconset")
-os.makedirs(iconset, exist_ok=True)
-
-# Marka geometrisi Resources/Icons/hal.svg ile birebir ayni.
-# SVG'yi qlmanage ile rasterlemek beyaz zemin bastigi icin dogrudan ciziyoruz.
-CX = CY = 400.0
-R, INNER = 310.0, 190.0
-GAP_CENTER, GAP_HALF = 315.0, 40.0
-DOT_R, DOT_DIST = 100.0, 250.0
-INK = (247, 240, 214, 255)
-BG = (14, 14, 16, 255)
-
-def mark_layer(color):
-    img = Image.new("RGBA", (800, 800), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    d.pieslice([CX-R, CY-R, CX+R, CY+R],
-               GAP_CENTER + GAP_HALF, GAP_CENTER - GAP_HALF + 360, fill=color)
-    d.ellipse([CX-INNER, CY-INNER, CX+INNER, CY+INNER], fill=(0, 0, 0, 0))
-    a = math.radians(GAP_CENTER)
-    dx, dy = CX + DOT_DIST*math.cos(a), CY + DOT_DIST*math.sin(a)
-    d.ellipse([dx-DOT_R, dy-DOT_R, dx+DOT_R, dy+DOT_R], fill=color)
-    return img
-
-def app_icon(size):
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    pad = size * 0.08
-    d.rounded_rectangle((pad, pad, size-pad, size-pad), radius=size*0.22, fill=BG)
-    mark_size = max(int(size * 0.56), 1)
-    mark = mark_layer(INK).resize((mark_size, mark_size), Image.Resampling.LANCZOS)
-    offset = (size - mark_size) // 2
-    img.alpha_composite(mark, (offset, offset))
-    return img
-
-for s in [16, 32, 128, 256, 512]:
-    app_icon(s).save(os.path.join(iconset, "icon_%dx%d.png" % (s, s)))
-    app_icon(s * 2).save(os.path.join(iconset, "icon_%dx%d@2x.png" % (s, s)))
-
-# Yeni macOS sürümlerinde iconutil bazı geçerli RGBA iconset'lerini reddedebiliyor.
-# Pillow aynı çok-çözünürlüklü ICNS kapsayıcısını doğrudan ve deterministik üretir.
-app_icon(1024).save(os.path.join(root, "Hal.app", "Contents", "Resources", "AppIcon.icns"), format="ICNS")
-PY
-then
-  rm -rf "$ROOT/AppIcon.iconset"
-else
-  echo "PIL yok, ikon atlandı"
+# Uygulama ikonu: scripts/make-icon.swift aynı marka geometrisini CoreGraphics ile
+# çizer ve ImageIO ile çok çözünürlüklü ICNS yazar. Dış kütüphane gerekmez; ikon
+# üretilemezse derleme durur, ikonsuz bir paket sessizce çıkmaz.
+ICON_TOOL="$ROOT/.build/make-icon"
+if [[ ! -x "$ICON_TOOL" || "$ROOT/scripts/make-icon.swift" -nt "$ICON_TOOL" ]]; then
+  xcrun swiftc -O -sdk "$SDK" -module-cache-path "$MODULE_CACHE" \
+    "$ROOT/scripts/make-icon.swift" -o "$ICON_TOOL"
 fi
+"$ICON_TOOL" "$RES/AppIcon.icns"
+[[ -s "$RES/AppIcon.icns" ]] || { echo "AppIcon.icns üretilemedi" >&2; exit 1; }
 
 cp "$ROOT/Info.plist" "$APP/Contents/Info.plist"
 cp "$ROOT/Resources/turkey.json" "$RES/turkey.json"
