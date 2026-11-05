@@ -47,7 +47,7 @@ macOS 14+ · MIT License
 
 ## Quick start
 
-The ready-to-use build is the DMG on [Releases](https://github.com/tahsingibi/hal/releases/latest). The published release is **1.1.0** (31 October 2026).
+The ready-to-use build is the DMG on [Releases](https://github.com/tahsingibi/hal/releases/latest). The published release is **1.2.0** (5 November 2026).
 
 1. Open the DMG and drag **Hal** to **Applications**.
 2. First launch: System Settings → Privacy & Security → **Open Anyway**.
@@ -206,7 +206,7 @@ Other notifications are off by default. Modules produce an `Alert` in `ModuleAle
 
 ### Other features
 
-- **Cleaning mode:** Covers the screen with a shield; this part works without permissions. Locking system shortcuts also requires Accessibility and Input Monitoring. Permission is requested with the button in Settings; it doesn't send you to System Settings on every launch.
+- **Cleaning mode:** Locks the keyboard, system keys, scrolling and trackpad gestures; mouse and trackpad clicks keep working. Unlock by pressing Esc 5 times or with the Unlock button on screen. The screen blacks out or a small corner indicator appears; your title and note stay on screen. Needs Accessibility; without it the lock never starts.
 - **Keep awake:** While Always is on, the Mac does not idle-sleep or sleep the display. Optional timer, while apps from the Focus list are frontmost, while on power or an external display, and while the lid is closed. The lid rule blocks idle sleep; macOS can still sleep on lid close when there is no external power and display.
 - **Launch at login:** Updated only when the switch in Settings changes.
 
@@ -221,7 +221,7 @@ The app is **not** sandboxed. Everything it reads is listed here:
 | Grok quota | `~/.grok/auth.json` | Written back to the same file when the token is refreshed. Cookies and the console.x.ai management key are not requested |
 | Prayer times | `api.aladhan.com` once a city is chosen | No request until coordinates are chosen |
 | Calendar | EventKit after pressing the button | Not accessed without permission |
-| Cleaning shortcut lock | Accessibility and Input Monitoring | Only via the button in Settings |
+| Cleaning mode lock | Accessibility | Keys are swallowed only while locked; nothing but the Esc count is read |
 | Daily records | `~/Library/Application Support/Hal/` | The old `secrets.json` is not part of the quota path |
 | Keep awake | Frontmost app, power source, displays, lid | No network |
 | Homebrew | `brew` on this Mac | Network only if `brew` itself asks for it |
@@ -232,10 +232,10 @@ The app is **not** sandboxed. Everything it reads is listed here:
 
 A downloaded copy asks about new versions on its own; nothing installs automatically. It checks once a day, and you can also trigger it from Settings › About › *Check for updates*.
 
-- **Channel:** `https://raw.githubusercontent.com/tahsingibi/hal/main/appcast.xml`. The app reads this file from the repo. The zip goes on a GitHub Release; its address is the `enclosure` line inside `appcast.xml`. The channel lists **1.1.0** (build 3).
+- **Channel:** `https://raw.githubusercontent.com/tahsingibi/hal/main/appcast.xml`. The app reads this file from the repo. The zip goes on a GitHub Release; its address is the `enclosure` line inside `appcast.xml`. The channel lists **1.2.0** (build 4).
 - **Sparkle:** The bundle ships with Sparkle 2.10.0. `build.sh` downloads the archive and verifies it with SHA-256.
 - **Keys:** The public key is in `SUPublicEDKey`. The private key is in the login keychain (account name `Hal`) and never enters the repo. If the key is deleted, updates after this version can no longer be signed.
-- **This release:** the DMG and the Sparkle zip on the GitHub Release. An in-app check sees 1.1.0.
+- **This release:** the DMG and the Sparkle zip on the GitHub Release. An in-app check sees 1.2.0.
 - **A later in-app update:** `scripts/publish-update.sh` builds a zip only when a **Developer ID Application** certificate is present. The zip goes on a GitHub Release, and its address is written to the `enclosure` line inside `appcast.xml`. Notarization needs `NOTARY_KEYCHAIN_PROFILE`. `CFBundleVersion` increases strictly.
 - **Continuity:** The bundle identifier never changes, so `~/Library/Application Support/Hal` and preferences stay in place.
 

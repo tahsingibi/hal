@@ -47,7 +47,7 @@ macOS 14+ · MIT Lisansı
 
 ## Hızlı başlangıç
 
-Hazır kurulum [Releases](https://github.com/tahsingibi/hal/releases/latest) üzerindeki DMG dosyasıdır. Yayındaki sürüm **1.1.0** (31 Ekim 2026).
+Hazır kurulum [Releases](https://github.com/tahsingibi/hal/releases/latest) üzerindeki DMG dosyasıdır. Yayındaki sürüm **1.2.0** (5 Kasım 2026).
 
 1. DMG'yi aç, **Hal**'i **Applications** klasörüne sürükle.
 2. İlk açılış: Sistem Ayarları → Gizlilik ve Güvenlik → **Yine de Aç**.
@@ -222,7 +222,7 @@ Diğer bildirimler kapalı gelir. Modüller `ModuleAlerts.swift` içinde `Alert`
 
 ### Diğer özellikler
 
-- **Temizlik modu:** Ekranı kalkanla kapatır; bu kısım izinsiz de çalışır. Sistem kısayollarının da kilitlenmesi için Erişilebilirlik ve Giriş İzleme gerekir. İzin Ayarlar'daki düğmeyle istenir; her açılışta Sistem Ayarları'na yönlendirmez.
+- **Temizlik modu:** Klavyeyi, sistem tuşlarını, kaydırmayı ve trackpad hareketlerini kilitler; fare ve trackpad tıklamaları çalışır. Kilit Esc’ye 5 kez basarak ya da ekrandaki Kilidi aç düğmesiyle açılır. Ekran kararır ya da köşede küçük bir gösterge çıkar; yazdığın başlık ve not ekranda kalır. Erişilebilirlik izni ister; izin yoksa kilit hiç başlamaz.
 - **Uyanık tutma:** Sürekli açıkken Mac boşta uyku ve ekran uykusuna geçmez. İsteğe bağlı sayaç, Odak listesindeki uygulamalar öndeyken, prizde veya harici ekrandayken, kapak kapalıyken. Kapak kuralı boşta uykuyu keser; macOS, harici güç ve ekran yoksa kapağı kapatınca yine uyuyabilir.
 - **Açılışta başlat:** Yalnızca Ayarlar'daki anahtar değişince güncellenir.
 
@@ -237,7 +237,7 @@ Uygulama sandbox'lı **değildir**. Okuduğu her şey burada:
 | Grok kotası             | `~/.grok/auth.json`                        | Belirteç yenilenince aynı dosyaya yazılır. Çerez ve console.x.ai yönetim anahtarı istenmez |
 | Namaz vakitleri         | Şehir seçilince `api.aladhan.com`          | Koordinat seçilmeden istek yapılmaz                                                        |
 | Takvim                  | Düğmeye basılınca EventKit                 | İzin yokken erişilmez                                                                      |
-| Temizlik kısayol kilidi | Erişilebilirlik ve Giriş İzleme            | Yalnızca Ayarlar'daki düğmeyle                                                             |
+| Temizlik modu kilidi    | Erişilebilirlik                            | Tuşlar yalnızca kilit açıkken yutulur; Esc sayacı dışında hiçbir tuş okunmaz              |
 | Günlük kayıtlar         | `~/Library/Application Support/Hal/`       | Eski `secrets.json` kota yolunun parçası değildir                                          |
 | Uyanık tutma            | Öndeki uygulama, güç kaynağı, ekranlar, kapak | Ağ yok                                                                                  |
 | Homebrew                | Bu Mac’teki `brew`                         | Ağ, yalnızca `brew` kendi isterse                                                          |
@@ -248,10 +248,10 @@ Uygulama sandbox'lı **değildir**. Okuduğu her şey burada:
 
 İndirilen kopya yeni sürümü kendisi sorar; kurulum kendiliğinden yapılmaz. Denetleme günde bir kez yapılır; Ayarlar › Hakkında › _Güncellemeleri denetle_ ile de istenir.
 
-- **Kanal:** `https://raw.githubusercontent.com/tahsingibi/hal/main/appcast.xml`. Uygulama repodaki bu dosyaya bakar. Zip, GitHub Release’e konur; indirme adresi `appcast.xml` içindeki `enclosure` satırındadır. Kanalda **1.1.0** (derleme 3) var.
+- **Kanal:** `https://raw.githubusercontent.com/tahsingibi/hal/main/appcast.xml`. Uygulama repodaki bu dosyaya bakar. Zip, GitHub Release’e konur; indirme adresi `appcast.xml` içindeki `enclosure` satırındadır. Kanalda **1.2.0** (derleme 4) var.
 - **Sparkle:** Paket Sparkle 2.10.0 ile gelir. `build.sh` arşivi indirir ve SHA-256 ile doğrular.
 - **Anahtarlar:** Açık anahtar `SUPublicEDKey` içindedir. Gizli anahtar login anahtarlığındadır (hesap adı `Hal`) ve repoya girmez. Anahtar silinirse bu sürümden sonrakilere güncelleme imzalanamaz.
-- **Bu sürüm:** GitHub Release üzerindeki DMG ve Sparkle zip’i. Uygulama içi denetleme 1.1.0’ı görür.
+- **Bu sürüm:** GitHub Release üzerindeki DMG ve Sparkle zip’i. Uygulama içi denetleme 1.2.0’ı görür.
 - **Sonraki uygulama içi güncelleme:** `scripts/publish-update.sh` yalnızca **Developer ID Application** sertifikası varken zip üretir. Zip GitHub Release'e konur, adresi `appcast.xml` içindeki `enclosure` satırına yazılır. Noter için `NOTARY_KEYCHAIN_PROFILE` gerekir. `CFBundleVersion` katı biçimde artar.
 - **Sürekliliği korumak:** Bundle kimliği değişmez; `~/Library/Application Support/Hal` ve tercihler yerinde kalır.
 
