@@ -433,8 +433,8 @@ struct SettingsView: View {
                 Text(claudeHint).font(.caption).foregroundStyle(.secondary)
             }
             Text(L(
-                "Claude oturumu Keychain’den okunur. Süre dolduysa Terminal’de claude çalıştır, tarayıcıdan giriş yap, sonra Yenile.",
-                "The Claude session is read from Keychain. If it expired, run claude in Terminal, sign in in the browser, then Refresh."
+                "Kota Claude Code’a sorulur; Hâl anahtar zincirini okumaz, oturumu Claude Code kendisi yeniler. Oturum yoksa Terminal’de claude /login çalıştır, sonra Yenile.",
+                "Quota is asked of Claude Code; Hâl never reads the Keychain and Claude Code renews its own sign-in. If signed out, run claude /login in Terminal, then Refresh."
             ))
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -451,8 +451,8 @@ struct SettingsView: View {
                 Task { await store.refresh() }
             }
             Text(L(
-                "Codex ~/.codex/auth.json dosyasından okunur. Oturum yoksa Terminal’de codex login çalıştır.",
-                "Codex is read from ~/.codex/auth.json. If there is no session, run codex login in Terminal."
+                "Kota Codex’in kendi sunucusuna (codex app-server) sorulur; Hâl oturum dosyasını okumaz. Oturum yoksa Terminal’de codex login çalıştır.",
+                "Quota is asked of Codex’s own server (codex app-server); Hâl never reads its sign-in file. If signed out, run codex login in Terminal."
             ))
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -1161,35 +1161,34 @@ struct SettingsView: View {
                     get: { store.cleaningMode },
                     set: { store.setCleaningMode($0) }
                 ))
-                TextField(L("Başlık", "Title"), text: $store.settings.cleaningTitle, prompt: Text(AppSettings.defaultCleaningTitle))
+                TextField(L("Başlık", "Title"), text: $store.settings.cleaningTitle,
+                          prompt: Text(L("Klavye temizlik için kilitlendi", "Keyboard locked for cleaning")))
                 TextField(
-                    L("Metin", "Text"),
+                    L("Ekrandaki not", "Note on screen"),
                     text: $store.settings.cleaningHint,
-                    prompt: Text(AppSettings.defaultCleaningHint.replacingOccurrences(of: "\n", with: " ")),
+                    prompt: Text(L("İsteğe bağlı; ör. “Dokunmayın, kuruyor”", "Optional, e.g. “Don’t touch, drying”")),
                     axis: .vertical
                 )
                 .lineLimit(2...5)
+                Toggle(L("Ekranı görünür tut", "Keep the screen visible"), isOn: $store.settings.cleaningKeepScreenVisible)
                 Text(L(
-                    "Ekran karartılır; dahili klavye ve trackpad tıklamaları yenilir. Harici mouse çalışır. Boş bırakılan başlık ve metin varsayılana döner.",
-                    "The screen dims; built-in keyboard and trackpad clicks are blocked. An external mouse still works. Blank title and text fall back to the defaults."
+                    "Klavye, sistem tuşları, kaydırma ve trackpad hareketleri kilitlenir; fare ve trackpad tıklamaları çalışır. Kilidi açmak için Esc’ye 5 kez bas ya da ekrandaki Kilidi aç düğmesine tıkla. Ekranı görünür tutarsan karartma yerine köşede küçük bir gösterge çıkar; başlık ve not iki görünümde de kalır.",
+                    "The keyboard, system keys, scrolling and trackpad gestures are locked; mouse and trackpad clicks still work. Press Esc 5 times or click Unlock on screen to stop. If you keep the screen visible, a small indicator appears in the corner instead of the blackout; the title and note show in both."
                 ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if !DeviceModes.shared.accessibilityTrusted {
                     Text(L(
-                        "Ekran kalkanı izin olmadan da çalışır. Sistem kısayollarının (Cmd-Tab gibi) da kilitlenmesi için Hâl’e Erişilebilirlik ve Giriş İzleme izni gerekir.",
-                        "The screen shield works without permission. Locking system shortcuts (like Cmd-Tab) as well needs Accessibility and Input Monitoring permission for Hâl."
+                        "Klavye kilidi Erişilebilirlik izni ister. İzin olmadan temizlik modu başlamaz; böylece açılamayan bir klavyeyle kalmazsın.",
+                        "The keyboard lock needs Accessibility permission. Without it cleaning mode won’t start, so you can’t get stuck with a locked keyboard."
                     ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Button(L("Klavye kilidi izni iste", "Request keyboard lock permission")) {
+                    Button(L("Erişilebilirlik izni iste", "Request Accessibility permission")) {
                         DeviceModes.shared.requestKeyboardLockPermission()
                     }
                     Button(L("Erişilebilirlik ayarını aç", "Open Accessibility settings")) {
                         DeviceModes.shared.openAccessibilitySettings()
-                    }
-                    Button(L("Giriş İzleme ayarını aç", "Open Input Monitoring settings")) {
-                        DeviceModes.shared.openInputMonitoringSettings()
                     }
                 }
             }
@@ -1524,8 +1523,8 @@ struct SettingsView: View {
 
     private static func origin(for kind: ProviderKind) -> String {
         switch kind {
-        case .claude: return "api.anthropic.com"
-        case .codex: return "chatgpt.com"
+        case .claude: return "claude CLI"
+        case .codex: return "codex app-server"
         case .grok: return "grok login"
         case .custom: return L("özel kaynak", "custom source")
         }

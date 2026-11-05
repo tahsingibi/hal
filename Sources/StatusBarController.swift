@@ -38,9 +38,6 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         self.store = store
         super.init()
         buildPopover()
-        DeviceModes.shared.clickTargetProvider = { [weak self] in
-            self?.extraClickRects() ?? []
-        }
         observe()
         rebuildExtras()
         syncReplicas()
@@ -418,22 +415,6 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         return (title, lines.joined(separator: "\n"))
     }
 
-    private func extraClickRects() -> [NSRect] {
-        var rects: [NSRect] = []
-        for extra in extras {
-            guard let button = extra.item.button, let window = button.window else { continue }
-            let local = button.convert(button.bounds.insetBy(dx: -6, dy: -3), to: nil)
-            rects.append(window.convertToScreen(local))
-        }
-        if popover.isShown, let window = popover.contentViewController?.view.window {
-            rects.append(window.frame)
-        }
-        if let settingsWindow, settingsWindow.isVisible {
-            rects.append(settingsWindow.frame)
-        }
-        return rects
-    }
-
     @objc private func extraClicked(_ sender: NSStatusBarButton) {
         guard let extra = extras.first(where: { $0.item.button === sender }) else { return }
         let eventType = NSApp.currentEvent?.type
@@ -496,7 +477,6 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
             window.makeKey()
         }
         startOutsideClickMonitor()
-        DeviceModes.shared.refreshClickTargets()
     }
 
     private func closePopover() {

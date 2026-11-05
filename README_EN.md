@@ -118,9 +118,11 @@ Claude, Codex and Grok. Toggles are off on first setup; even if a CLI is install
 
 | | Source | Session |
 | --- | --- | --- |
-| Claude | `api.anthropic.com/api/oauth/usage` | Keychain, "Claude Code-credentials" |
-| Codex | `chatgpt.com/backend-api/wham/usage` | `~/.codex/auth.json` |
+| Claude | `claude` control protocol (`get_usage`, the same data as /usage) | Managed by Claude Code; Hâl never reads it |
+| Codex | `codex app-server` (`account/rateLimits/read`) | Managed by Codex; Hâl never reads it |
 | Grok | grok CLI billing response | `~/.grok/auth.json` |
+
+Claude and Codex quotas are asked of the CLIs themselves, so there are no Keychain prompts and Hâl never refreshes anyone's sign-in. If Claude Code can't answer, the Claude desktop app's `plan-usage-history.json` record is read instead. Banked Codex resets appear on the same page and can be used after a confirmation.
 
 - **Grok:** The weekly limit and Grok Build are read from this billing response. If the token is about to expire, it is renewed with the refresh token in the same file and written back. Prepaid balance and management keys do not factor into this figure.
 - **No session:** For Claude or Grok, a Terminal login can be opened from the window. Chats, the session directory and browser cookies are not read; Chrome Safe Storage is never queried.
@@ -214,8 +216,8 @@ The app is **not** sandboxed. Everything it reads is listed here:
 
 | What | From where / when | Note |
 | --- | --- | --- |
-| Claude quota | Keychain, "Claude Code-credentials" | Chats are not read |
-| Codex quota | `~/.codex/auth.json` | Session directory and chat bodies are not read |
+| Claude quota | Asked of the `claude` CLI; fallback `~/Library/Application Support/Claude/plan-usage-history.json` | Neither the Keychain nor chats are read |
+| Codex quota | Asked of `codex app-server` | `auth.json`, the session directory and chat bodies are not read |
 | Grok quota | `~/.grok/auth.json` | Written back to the same file when the token is refreshed. Cookies and the console.x.ai management key are not requested |
 | Prayer times | `api.aladhan.com` once a city is chosen | No request until coordinates are chosen |
 | Calendar | EventKit after pressing the button | Not accessed without permission |

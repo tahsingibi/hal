@@ -132,11 +132,13 @@ Açık modüllerin panoya verdiği satırları toplar: derin çalışma, en boş
 
 Claude, Codex ve Grok. Anahtarlar ilk kurulumda kapalıdır; CLI makinede olsa bile kotayı sen açarsın.
 
-|        | Kaynak                               | Oturum                                     |
-| ------ | ------------------------------------ | ------------------------------------------ |
-| Claude | `api.anthropic.com/api/oauth/usage`  | Anahtar Zinciri, "Claude Code-credentials" |
-| Codex  | `chatgpt.com/backend-api/wham/usage` | `~/.codex/auth.json`                       |
-| Grok   | grok CLI fatura yanıtı               | `~/.grok/auth.json`                        |
+|        | Kaynak                                                        | Oturum                                   |
+| ------ | ------------------------------------------------------------- | ---------------------------------------- |
+| Claude | `claude` kontrol protokolü (`get_usage`, /usage ile aynı veri) | Claude Code yönetir; Hâl okumaz          |
+| Codex  | `codex app-server` (`account/rateLimits/read`)                | Codex yönetir; Hâl okumaz                |
+| Grok   | grok CLI fatura yanıtı                                        | `~/.grok/auth.json`                      |
+
+Claude ve Codex kotası CLI'nin kendisine sorulur, bu yüzden anahtar zinciri izin sorusu çıkmaz ve Hâl hiçbir oturumu yenilemez. Claude Code yanıt veremezse Claude masaüstü uygulamasının `plan-usage-history.json` kaydı okunur. Codex hesabında biriken sıfırlama hakları da aynı sayfada görünür ve onayla kullanılabilir.
 
 - **Grok:** Haftalık sınır ve Grok Build bu faturadan okunur. Süre dolmak üzereyse aynı dosyadaki yenileme belirteciyle uzatılır ve dosyaya geri yazılır. Ön ödemeli bakiye ve yönetim anahtarı bu sayıya karışmaz.
 - **Oturum yoksa:** Claude veya Grok için pencereden Terminalde giriş açılır. Sohbet, oturum dizini ve tarayıcı çerezi okunmaz; Chrome Safe Storage sorulmaz.
@@ -230,8 +232,8 @@ Uygulama sandbox'lı **değildir**. Okuduğu her şey burada:
 
 | Ne                      | Nereden / ne zaman                         | Not                                                                                        |
 | ----------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| Claude kotası           | Anahtar Zinciri, "Claude Code-credentials" | Sohbet okunmaz                                                                             |
-| Codex kotası            | `~/.codex/auth.json`                       | Oturum dizini ve sohbet gövdesi okunmaz                                                    |
+| Claude kotası           | `claude` CLI'ye sorulur; yedek olarak `~/Library/Application Support/Claude/plan-usage-history.json` | Anahtar zinciri ve sohbet okunmaz                                    |
+| Codex kotası            | `codex app-server`'a sorulur               | `auth.json`, oturum dizini ve sohbet gövdesi okunmaz                                       |
 | Grok kotası             | `~/.grok/auth.json`                        | Belirteç yenilenince aynı dosyaya yazılır. Çerez ve console.x.ai yönetim anahtarı istenmez |
 | Namaz vakitleri         | Şehir seçilince `api.aladhan.com`          | Koordinat seçilmeden istek yapılmaz                                                        |
 | Takvim                  | Düğmeye basılınca EventKit                 | İzin yokken erişilmez                                                                      |

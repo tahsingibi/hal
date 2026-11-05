@@ -140,15 +140,10 @@ final class AppStore: ObservableObject {
                 ModulePage(module: .focus, item: nil, title: L("Odak", "Focus"), icon: .app, menuBarID: nil)
             ]
         case .usage:
-            return quotas.map { group in
-                ModulePage(
-                    module: .usage,
-                    item: group.id,
-                    title: group.name,
-                    icon: BrandIcon.from(id: group.id),
-                    menuBarID: group.id
-                )
-            }
+            // Bütün sağlayıcılar tek sayfada; menü çubuğu kimlikleri `visibleQuotaIDs`'ten gelir.
+            return quotas.isEmpty ? [] : [
+                ModulePage(module: .usage, item: nil, title: L("Kotalar", "Quotas"), icon: .app, menuBarID: nil)
+            ]
         case .prayer:
             return [
                 ModulePage(module: .prayer, item: nil, title: L("Vakitler", "Prayer times"), icon: .prayer, menuBarID: "prayer")
@@ -939,9 +934,64 @@ final class AppStore: ObservableObject {
 
     func select(_ target: DetailTarget) {
         hoverCollapseWork?.cancel()
+        if target.module == .usage, let item = target.item { lastQuotaID = item }
+        // Kotaların tek sayfası var; sağlayıcı kimliği yalnızca hangi kartın öne çıkacağını söyler.
+        let target = target.module == .usage ? DetailTarget(module: .usage) : target
         selection = target
         persistSelection(target)
         setExpanded(true)
+    }
+
+    // MARK: - Codex sıfırlama hakları
+
+    enum CodexResetActivity: Equatable {
+        case idle
+        case redeeming
+        /// Sunucu yanıt vermediyse `outcome` nil.
+        case finished(outcome: CodexAppServer.Outcome?, date: Date)
+    }
+
+    @Published var codexResetActivity: CodexResetActivity = .idle
+    /// Yanıtı kaybolan bir kullanım aynı anahtarla tekrar denenir; ikinci bir hak harcanmaz.
+    private var pendingCodexReset: (key: String, credit: String?, date: Date)?
+
+    /// Süresi en yakın dolan hakkı kullanır ya da yanıtsız kalan kullanımı tekrarlar.
+    func redeemCodexReset() {
+        guard codexResetActivity != .redeeming,
+              let credits = quotas.first(where: { $0.id == "codex" })?.resetCredits,
+              credits.available > 0 else { return }
+        codexResetActivity = .redeeming
+        let now = Date()
+        let attempt = pendingCodexReset.flatMap { now.timeIntervalSince($0.date) < 600 ? $0 : nil }
+            ?? (key: UUID().uuidString, credit: credits.credits.first?.id, date: now)
+        pendingCodexReset = attempt
+        let key = attempt.key, credit = attempt.credit
+        Task {
+            let result = await AgentCLIQueue.run { CodexAppServer.redeem(credit: credit, key: key) }
+            switch result.outcome {
+            case .success(let outcome):
+                pendingCodexReset = nil
+                codexResetActivity = .finished(outcome: outcome, date: Date())
+            case .failure(.unreachable), .failure(.refused):
+                // Codex kendi isteği zaman aşımına uğradığında da hata döner; kullanım
+                // yolda gerçekleşmiş olabilir, anahtar saklanır.
+                codexResetActivity = .finished(outcome: nil, date: Date())
+            case .failure:
+                pendingCodexReset = nil
+                codexResetActivity = .finished(outcome: nil, date: Date())
+            }
+            await AgentQuotaMemory.shared.invalidate("codex")
+            if let reading = result.reading, let index = quotas.firstIndex(where: { $0.id == "codex" }) {
+                var group = UsageService.codexGroup(reading)
+                if group.status == .ready {
+                    group.plan = group.plan ?? quotas[index].plan
+                    quotas[index] = group
+                    await AgentQuotaMemory.shared.store(group)
+                    return
+                }
+            }
+            await refresh()
+        }
     }
 
     func restoreSelection() {
@@ -1303,9 +1353,9 @@ final class AppStore: ObservableObject {
         let result = DeviceModes.shared.setCleaning(
             on,
             copy: DeviceModes.CleaningCopy(
-                title: settings.resolvedCleaningTitle,
-                hint: settings.resolvedCleaningHint,
-                buttonTitle: settings.resolvedCleaningButtonTitle
+                title: settings.cleaningTitle,
+                note: settings.cleaningHint,
+                keepScreenVisible: settings.cleaningKeepScreenVisible
             )
         )
         cleaningMode = result.active
